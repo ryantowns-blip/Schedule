@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'models/parsed_shift.dart';
+import 'screens/wmt_portal_page.dart';
 import 'services/schedule_parser.dart';
 import 'services/wmt_auth_service.dart';
+
+const _wmtLoginUrl = String.fromEnvironment('WMT_LOGIN_URL');
 
 void main() {
   runApp(const AtcScheduleManagerApp());
@@ -39,6 +42,7 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
   final _auth = WmtAuthService();
   List<ParsedShift> _results = const [];
   String? _error;
+  String? _capturedWmtHtml;
 
   @override
   void initState() {
@@ -76,13 +80,38 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     });
   }
 
-  void _simulateAuthenticated() {
-    setState(_auth.authenticationSucceeded);
+  Future<void> _openMyAccess() async {
+    if (_wmtLoginUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'WMT login URL is not configured in this build yet. The browser/session layer is ready for the verified WMT address.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final html = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const WmtPortalPage(startUrl: _wmtLoginUrl),
+      ),
+    );
+
+    if (!mounted || html == null || html.isEmpty) return;
+    setState(() {
+      _capturedWmtHtml = html;
+      _auth.authenticationSucceeded();
+    });
   }
 
   void _signOut() {
     _emailController.clear();
-    setState(_auth.signOut);
+    setState(() {
+      _capturedWmtHtml = null;
+      _auth.signOut();
+    });
   }
 
   String _formatMinutes(int? minutes) {
@@ -145,20 +174,24 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
               Text('Step 2 of 2 — MyAccess password page for ${state.email ?? 'your FAA account'}.'),
               const SizedBox(height: 8),
               const Text(
-                'The app will hand this step to the secure MyAccess browser session. The app will not save your password.',
+                'Your password is entered only inside the embedded FAA MyAccess page and is not stored by ATC Schedule Manager.',
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
-                onPressed: _simulateAuthenticated,
+                onPressed: _openMyAccess,
                 icon: const Icon(Icons.open_in_browser),
-                label: const Text('Continue in MyAccess'),
+                label: const Text('Open FAA MyAccess'),
               ),
             ] else ...[
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.check_circle),
-                title: const Text('WMT connected'),
-                subtitle: Text(state.email ?? 'FAA account'),
+                title: const Text('WMT session captured'),
+                subtitle: Text(
+                  _capturedWmtHtml == null
+                      ? (state.email ?? 'FAA account')
+                      : '${state.email ?? 'FAA account'} • page captured',
+                ),
               ),
               OutlinedButton(
                 onPressed: _signOut,
