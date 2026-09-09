@@ -5,7 +5,7 @@ import 'screens/wmt_portal_page.dart';
 import 'services/schedule_parser.dart';
 import 'services/wmt_auth_service.dart';
 
-const _wmtLoginUrl = String.fromEnvironment('WMT_LOGIN_URL');
+const _wmtLoginUrl = 'https://wmtscheduler.faa.gov/WMT_LogOn/';
 
 void main() {
   runApp(const AtcScheduleManagerApp());
@@ -81,18 +81,6 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
   }
 
   Future<void> _openMyAccess() async {
-    if (_wmtLoginUrl.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'WMT login URL is not configured in this build yet. The browser/session layer is ready for the verified WMT address.',
-          ),
-        ),
-      );
-      return;
-    }
-
     final html = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => const WmtPortalPage(startUrl: _wmtLoginUrl),
@@ -136,10 +124,7 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
               children: [
                 const Icon(Icons.cloud_sync),
                 const SizedBox(width: 8),
-                Text(
-                  'WMT Scheduler',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('WMT Scheduler', style: Theme.of(context).textTheme.titleMedium),
               ],
             ),
             const SizedBox(height: 8),
@@ -166,15 +151,12 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
                 onSubmitted: (_) => _submitEmail(),
               ),
               const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _submitEmail,
-                child: const Text('Continue'),
-              ),
+              FilledButton(onPressed: _submitEmail, child: const Text('Continue')),
             ] else if (state.step == WmtAuthStep.password) ...[
-              Text('Step 2 of 2 — MyAccess password page for ${state.email ?? 'your FAA account'}.'),
+              Text('Step 2 of 2 — MyAccess sign-in for ${state.email ?? 'your FAA account'}.'),
               const SizedBox(height: 8),
               const Text(
-                'Your password is entered only inside the embedded FAA MyAccess page and is not stored by ATC Schedule Manager.',
+                'Your password is entered only inside the FAA MyAccess page and is not stored by ATC Schedule Manager.',
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
@@ -193,10 +175,7 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
                       : '${state.email ?? 'FAA account'} • page captured',
                 ),
               ),
-              OutlinedButton(
-                onPressed: _signOut,
-                child: const Text('Disconnect'),
-              ),
+              OutlinedButton(onPressed: _signOut, child: const Text('Disconnect')),
             ],
           ],
         ),
