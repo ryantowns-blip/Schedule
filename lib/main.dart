@@ -32,7 +32,7 @@ class ScheduleParserPage extends StatefulWidget {
 }
 
 class _ScheduleParserPageState extends State<ScheduleParserPage> {
-  final _controller = TextEditingController(text: '1400\nL1400\nQ1400\n$1400\nX\nXtra1400');
+  final _controller = TextEditingController(text: '1400\nL1400\nQ1400\n\$1400\nX\nXtra1400');
   final _parser = const ScheduleParser();
   List<ParsedShift> _results = const [];
   String? _error;
@@ -94,7 +94,7 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
                 maxLines: 8,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  hintText: '1400\nL1400\n$1400\nX',
+                  hintText: '1400\nL1400\n\$1400\nX',
                 ),
               ),
               const SizedBox(height: 12),
