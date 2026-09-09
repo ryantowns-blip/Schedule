@@ -188,62 +188,52 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('ATC Schedule Manager')),
       body: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildWmtCard(),
-              const SizedBox(height: 12),
-              const Text(
-                'Paste WMT shift codes below. One shift per line.',
-                style: TextStyle(fontWeight: FontWeight.w600),
+          children: [
+            _buildWmtCard(),
+            const SizedBox(height: 12),
+            const Text(
+              'Paste WMT shift codes below. One shift per line.',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              minLines: 4,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '1400\nL1400\n\$1400\nX',
               ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _parse,
+              icon: const Icon(Icons.schedule),
+              label: const Text('Parse schedule'),
+            ),
+            if (_error != null) ...[
               const SizedBox(height: 12),
-              TextField(
-                controller: _controller,
-                minLines: 4,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: '1400\nL1400\n\$1400\nX',
-                ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: _parse,
-                icon: const Icon(Icons.schedule),
-                label: const Text('Parse schedule'),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-              ],
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _results.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final shift = _results[index];
-                    return ListTile(
-                      leading: Icon(shift.isDayOff
-                          ? Icons.event_busy
-                          : shift.isOvertime
-                              ? Icons.attach_money
-                              : Icons.access_time),
-                      title: Text('${shift.raw}  •  ${shift.label}'),
-                      subtitle: shift.isDayOff
-                          ? const Text('No calendar shift')
-                          : Text(
-                              '${_formatMinutes(shift.effectiveStartMinutes)} → ${_formatMinutes(shift.effectiveEndMinutes)}',
-                            ),
-                    );
-                  },
-                ),
-              ),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
-          ),
+            const SizedBox(height: 12),
+            ..._results.map(
+              (shift) => ListTile(
+                leading: Icon(shift.isDayOff
+                    ? Icons.event_busy
+                    : shift.isOvertime
+                        ? Icons.attach_money
+                        : Icons.access_time),
+                title: Text('${shift.raw}  •  ${shift.label}'),
+                subtitle: shift.isDayOff
+                    ? const Text('No calendar shift')
+                    : Text(
+                        '${_formatMinutes(shift.effectiveStartMinutes)} → ${_formatMinutes(shift.effectiveEndMinutes)}',
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
     );
