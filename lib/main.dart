@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'models/parsed_shift.dart';
 import 'services/schedule_parser.dart';
+import 'services/wmt_auth_service.dart';
 
 void main() {
   runApp(const AtcScheduleManagerApp());
@@ -33,7 +34,9 @@ class ScheduleParserPage extends StatefulWidget {
 
 class _ScheduleParserPageState extends State<ScheduleParserPage> {
   final _controller = TextEditingController(text: '1400\nL1400\nQ1400\n\$1400\nX\nXtra1400');
+  final _emailController = TextEditingController();
   final _parser = const ScheduleParser();
+  final _auth = WmtAuthService();
   List<ParsedShift> _results = const [];
   String? _error;
 
@@ -46,6 +49,7 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -64,6 +68,23 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     }
   }
 
+  void _beginLogin() => setState(_auth.beginLogin);
+
+  void _submitEmail() {
+    setState(() {
+      _auth.submitEmail(_emailController.text);
+    });
+  }
+
+  void _simulateAuthenticated() {
+    setState(_auth.authenticationSucceeded);
+  }
+
+  void _signOut() {
+    _emailController.clear();
+    setState(_auth.signOut);
+  }
+
   String _formatMinutes(int? minutes) {
     if (minutes == null) return '—';
     final normalized = ((minutes % 1440) + 1440) % 1440;
@@ -71,6 +92,83 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     final minute = normalized % 60;
     final nextDay = minutes >= 1440 ? ' +1d' : '';
     return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}$nextDay';
+  }
+
+  Widget _buildWmtCard() {
+    final state = _auth.state;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.cloud_sync),
+                const SizedBox(width: 8),
+                Text(
+                  'WMT Scheduler',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (state.step == WmtAuthStep.signedOut) ...[
+              const Text('Connect to WMT through the FAA MyAccess login flow.'),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _beginLogin,
+                icon: const Icon(Icons.login),
+                label: const Text('Connect to WMT'),
+              ),
+            ] else if (state.step == WmtAuthStep.email) ...[
+              const Text('Step 1 of 2 — enter your FAA email address.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: InputDecoration(
+                  labelText: 'FAA email',
+                  border: const OutlineInputBorder(),
+                  errorText: state.message,
+                ),
+                onSubmitted: (_) => _submitEmail(),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _submitEmail,
+                child: const Text('Continue'),
+              ),
+            ] else if (state.step == WmtAuthStep.password) ...[
+              Text('Step 2 of 2 — MyAccess password page for ${state.email ?? 'your FAA account'}.'),
+              const SizedBox(height: 8),
+              const Text(
+                'The app will hand this step to the secure MyAccess browser session. The app will not save your password.',
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _simulateAuthenticated,
+                icon: const Icon(Icons.open_in_browser),
+                label: const Text('Continue in MyAccess'),
+              ),
+            ] else ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.check_circle),
+                title: const Text('WMT connected'),
+                subtitle: Text(state.email ?? 'FAA account'),
+              ),
+              OutlinedButton(
+                onPressed: _signOut,
+                child: const Text('Disconnect'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -83,6 +181,8 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _buildWmtCard(),
+              const SizedBox(height: 12),
               const Text(
                 'Paste WMT shift codes below. One shift per line.',
                 style: TextStyle(fontWeight: FontWeight.w600),
@@ -90,8 +190,8 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
               const SizedBox(height: 12),
               TextField(
                 controller: _controller,
-                minLines: 5,
-                maxLines: 8,
+                minLines: 4,
+                maxLines: 6,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   hintText: '1400\nL1400\n\$1400\nX',
