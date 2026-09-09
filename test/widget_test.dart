@@ -26,6 +26,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Step 2 of 2'), findsOneWidget);
-    expect(find.text('Continue in MyAccess'), findsOneWidget);
+    expect(find.text('Open FAA MyAccess'), findsOneWidget);
   });
 }
