@@ -11,13 +11,13 @@ class ScheduleParser {
       return ParsedShift(
         raw: raw,
         startMinutes: null,
-        durationMinutes: 0,
+        baseDurationMinutes: 0,
         shiftType: ShiftType.dayOff,
         flexType: FlexType.none,
         isSupervisor: false,
         isCic: false,
-        hasXtraBefore: false,
-        hasXtraAfter: false,
+        overtimeBeforeMinutes: 0,
+        overtimeAfterMinutes: 0,
       );
     }
 
@@ -48,28 +48,28 @@ class ScheduleParser {
       throw FormatException('Invalid time in "$raw"');
     }
 
-    var startMinutes = hour * 60 + minute;
-    var durationMinutes = 8 * 60;
+    final startMinutes = hour * 60 + minute;
+    var overtimeBeforeMinutes = 0;
+    var overtimeAfterMinutes = 0;
 
     if (splitXtra) {
-      startMinutes -= 60;
-      durationMinutes = 10 * 60;
-    } else if (xtraBefore && xtraAfter) {
-      durationMinutes = 10 * 60;
-    } else if (xtraBefore || xtraAfter) {
-      durationMinutes = 10 * 60;
+      overtimeBeforeMinutes = 60;
+      overtimeAfterMinutes = 60;
+    } else {
+      if (xtraBefore) overtimeBeforeMinutes = 120;
+      if (xtraAfter) overtimeAfterMinutes = 120;
     }
 
     return ParsedShift(
       raw: raw,
       startMinutes: startMinutes,
-      durationMinutes: durationMinutes,
+      baseDurationMinutes: 8 * 60,
       shiftType: isOvertime ? ShiftType.overtime : ShiftType.regular,
       flexType: flexType,
       isSupervisor: isSupervisor,
       isCic: isCic,
-      hasXtraBefore: xtraBefore || splitXtra,
-      hasXtraAfter: xtraAfter || splitXtra,
+      overtimeBeforeMinutes: overtimeBeforeMinutes,
+      overtimeAfterMinutes: overtimeAfterMinutes,
     );
   }
 
