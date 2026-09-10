@@ -74,7 +74,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Existing shifts found'),
-        content: Text('$count matching ATC Schedule Manager shift${count == 1 ? '' : 's'} already exist in this calendar. What should the app do with matches?'),
+        content: Text('$count matching ATC Schedule Manager calendar entr${count == 1 ? 'y' : 'ies'} already exist. What should the app do with matches?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -127,9 +127,10 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       );
       if (!mounted) return;
       final leaveTotal = result.annualLeaveCreated + result.annualLeaveUpdated;
+      final holidayTotal = result.holidayLeaveCreated + result.holidayLeaveUpdated;
       setState(() {
         _syncing = false;
-        _message = 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated${leaveTotal > 0 ? ', and $leaveTotal Annual Leave entries synced' : ''}.';
+        _message = 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -144,6 +145,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   Widget build(BuildContext context) {
     final workingCount = _service.workingShifts(widget.shifts).length;
     final leaveCount = _service.annualLeaveShifts(widget.shifts).length;
+    final holidayCount = _service.holidayLeaveShifts(widget.shifts).length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Add to Calendar')),
@@ -190,8 +192,12 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             const SizedBox(height: 6),
                             Text('$leaveCount Annual Leave entr${leaveCount == 1 ? 'y is' : 'ies are'} also ready to sync.'),
                           ],
+                          if (holidayCount > 0) ...[
+                            const SizedBox(height: 6),
+                            Text('$holidayCount Holiday Leave entr${holidayCount == 1 ? 'y is' : 'ies are'} also ready to sync.'),
+                          ],
                           const SizedBox(height: 8),
-                          const Text('Work events use the exact WMT shift name as the calendar title. Example: 0615L is titled 0615L and starts at the late-flex time, 15 minutes after 06:15.'),
+                          const Text('Work events use the exact WMT shift name as the calendar title and start at the time printed in that name. Holiday Leave is added as an all-day event.'),
                         ],
                       ),
                     ),
