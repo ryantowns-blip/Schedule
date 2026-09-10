@@ -27,9 +27,13 @@ class _UpdateSchedulePageState extends State<UpdateSchedulePage> {
   void _submitEmail() => setState(() => _auth.submitEmail(_emailController.text));
 
   Future<void> _openMyAccess() async {
+    final email = (_auth.state.email ?? _emailController.text).trim();
     final html = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => const WmtPortalPage(startUrl: _wmtLoginUrl),
+        builder: (_) => WmtPortalPage(
+          startUrl: _wmtLoginUrl,
+          faaEmail: email,
+        ),
       ),
     );
 
