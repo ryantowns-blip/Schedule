@@ -28,14 +28,23 @@ class WmtScheduleExtractor {
   }
 
   List<DatedShift> extract(String capturedHtml) {
-    final html = normalizeCapturedHtml(capturedHtml);
+    var html = normalizeCapturedHtml(capturedHtml);
     if (html.isEmpty) return const [];
 
+    // WMT annual-leave values such as A<1415L> contain literal angle
+    // brackets that look like HTML tags. Protect them before parsing cells so
+    // the shift code survives tag stripping. Entity-encoded values are
+    // already handled by _stripTags.
+    html = html.replaceAllMapped(
+      RegExp(r'A<([A-Za-z0-9$]+)>', caseSensitive: false),
+      (match) => 'A&lt;${match.group(1) ?? ''}&gt;',
+    );
+
     final results = <DatedShift>[];
-    final cellPattern = RegExp(r'<t[dh]\b[^>]*>([\s\S]*?)</t[dh]>', caseSensitive: false);
+    final cellPattern = RegExp(r'<t[dh]\\b[^>]*>([\\s\\S]*?)</t[dh]>', caseSensitive: false);
     for (final match in cellPattern.allMatches(html)) {
       final text = _stripTags(match.group(1) ?? '');
-      final dateMatch = RegExp(r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b').firstMatch(text);
+      final dateMatch = RegExp(r'\\b(\\d{1,2}/\\d{1,2}/\\d{2,4})\\b').firstMatch(text);
       if (dateMatch == null) continue;
       final date = _parseDate(dateMatch.group(1));
       if (date == null) continue;
@@ -46,7 +55,7 @@ class WmtScheduleExtractor {
     if (results.isNotEmpty) return _dedupeAndSort(results);
 
     final datedElement = RegExp(
-      r'''<[^>]*(?:data-date|date)\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)</[^>]+>''',
+      r'''<[^>]*(?:data-date|date)\\s*=\\s*["']([^"']+)["'][^>]*>([\\s\\S]*?)</[^>]+>''',
       caseSensitive: false,
     );
     for (final match in datedElement.allMatches(html)) {
@@ -59,7 +68,7 @@ class WmtScheduleExtractor {
 
     final text = _stripTags(html);
     final pairPattern = RegExp(
-      r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b\s+([^\s]+)',
+      r'\\b(\\d{1,2}/\\d{1,2}/\\d{2,4})\\b\\s+([^\\s]+)',
       caseSensitive: false,
     );
     for (final match in pairPattern.allMatches(text)) {
@@ -81,7 +90,7 @@ class WmtScheduleExtractor {
   }
 
   ParsedShift? _findShift(String text) {
-    for (final token in text.split(RegExp(r'\s+'))) {
+    for (final token in text.split(RegExp(r'\\s+'))) {
       final parsed = _tryParseShift(token);
       if (parsed != null) return parsed;
     }
@@ -101,7 +110,7 @@ class WmtScheduleExtractor {
 
     if (token.isEmpty) return null;
     if (!RegExp(
-      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\\d{3,4}ra)$',
       caseSensitive: false,
     ).hasMatch(token)) return null;
     try {
@@ -114,9 +123,9 @@ class WmtScheduleExtractor {
   DateTime? _parseDate(String? value) {
     if (value == null) return null;
     final text = value.trim();
-    final iso = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(text);
+    final iso = RegExp(r'^(\\d{4})-(\\d{1,2})-(\\d{1,2})$').firstMatch(text);
     if (iso != null) return DateTime(int.parse(iso.group(1)!), int.parse(iso.group(2)!), int.parse(iso.group(3)!));
-    final slash = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{2,4})$').firstMatch(text);
+    final slash = RegExp(r'^(\\d{1,2})/(\\d{1,2})/(\\d{2,4})$').firstMatch(text);
     if (slash != null) {
       var year = int.parse(slash.group(3)!);
       if (year < 100) year += 2000;
@@ -137,9 +146,9 @@ class WmtScheduleExtractor {
     );
 
     protected = protected
-        .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<script[\\s\\S]*?</script>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<style[\\s\\S]*?</style>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<br\\s*/?>', caseSensitive: false), ' ')
         .replaceAll(RegExp(r'<[^>]+>'), ' ')
         .replaceAll('&nbsp;', ' ')
         .replaceAll('&amp;', '&')
@@ -150,6 +159,6 @@ class WmtScheduleExtractor {
       protected = protected.replaceAll('ATC_ANNUAL_LEAVE_$i', annualCodes[i]);
     }
 
-    return protected.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return protected.replaceAll(RegExp(r'\\s+'), ' ').trim();
   }
 }
