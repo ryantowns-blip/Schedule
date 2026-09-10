@@ -22,9 +22,19 @@ class ScheduleParser {
     if (normalized == 'X') return nonWorking(ShiftType.dayOff);
     if (normalized == 'SL') return nonWorking(ShiftType.sickLeave);
     if (normalized == 'HL') return nonWorking(ShiftType.holidayLeave);
-    final annualMatch = RegExp(r'^A<(\d{3,4})>$').firstMatch(normalized);
+
+    // WMT annual leave is encoded as A<shift>, for example A<0500>,
+    // A<1415L>, or A<0715Q>. The numeric time inside the brackets is the
+    // authoritative leave start; shift modifiers remain part of the raw code
+    // but do not alter the calendar start time.
+    final annualMatch = RegExp(r'^A<([^>]+)>$').firstMatch(normalized);
     if (annualMatch != null) {
-      final digits = annualMatch.group(1)!.padLeft(4, '0');
+      final annualCode = annualMatch.group(1)!;
+      final timeMatch = RegExp(r'(\d{3,4})').firstMatch(annualCode);
+      if (timeMatch == null) {
+        throw FormatException('No annual-leave start time found in "$raw"');
+      }
+      final digits = timeMatch.group(1)!.padLeft(4, '0');
       final hour = int.parse(digits.substring(0, 2));
       final minute = int.parse(digits.substring(2, 4));
       if (hour > 23 || minute > 59) {
