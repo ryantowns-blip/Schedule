@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'models/schedule_display_settings.dart';
 import 'screens/pay_period_schedule_view.dart';
+import 'screens/settings_page.dart';
 import 'screens/update_schedule_page.dart';
 import 'services/wmt_schedule_extractor.dart';
 
@@ -38,6 +40,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   final _extractor = const WmtScheduleExtractor();
   List<DatedShift> _shifts = const [];
   DateTime? _lastUpdated;
+  ScheduleDisplaySettings _displaySettings = ScheduleDisplaySettings.defaults;
   bool _loading = true;
   String? _error;
 
@@ -51,11 +54,15 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     final prefs = await SharedPreferences.getInstance();
     final html = prefs.getString(_htmlKey);
     final updated = prefs.getString(_updatedKey);
+    final displaySettings = await ScheduleDisplaySettings.load();
 
     if (!mounted) return;
 
     if (html == null || html.isEmpty) {
-      setState(() => _loading = false);
+      setState(() {
+        _displaySettings = displaySettings;
+        _loading = false;
+      });
       return;
     }
 
@@ -64,11 +71,13 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       setState(() {
         _shifts = shifts;
         _lastUpdated = updated == null ? null : DateTime.tryParse(updated);
+        _displaySettings = displaySettings;
         _loading = false;
         _error = shifts.isEmpty ? 'Saved WMT data was found, but no schedule entries could be read.' : null;
       });
     } catch (e) {
       setState(() {
+        _displaySettings = displaySettings;
         _loading = false;
         _error = 'Could not load the saved schedule.';
       });
@@ -101,11 +110,21 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     });
   }
 
+  Future<void> _openSettings() async {
+    final result = await Navigator.of(context).push<ScheduleDisplaySettings>(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(initialSettings: _displaySettings),
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() => _displaySettings = result);
+  }
+
   String _formatUpdated(DateTime date) {
     final hour = date.hour == 0 ? 12 : date.hour > 12 ? date.hour - 12 : date.hour;
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
-    return '${date.month}/${date.day}/${date.year} $hour:$minute $suffix';
+    return '${date.month}/${date.day}/${date.year} at $hour:$minute $suffix';
   }
 
   @override
@@ -114,6 +133,11 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       appBar: AppBar(
         title: const Text('ATC Schedule Manager'),
         actions: [
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings_outlined),
+          ),
           IconButton(
             tooltip: 'Update schedule',
             onPressed: _updateSchedule,
@@ -143,15 +167,32 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
-                        child: PayPeriodScheduleView(shifts: _shifts),
+                        child: PayPeriodScheduleView(
+                          shifts: _shifts,
+                          displaySettings: _displaySettings,
+                        ),
                       ),
                     ),
                     if (_lastUpdated != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Last updated ${_formatUpdated(_lastUpdated!)}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
+                      const SizedBox(height: 10),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.history, size: 18),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  'Schedule data last updated: ${_formatUpdated(_lastUpdated!)}',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                     const SizedBox(height: 16),
