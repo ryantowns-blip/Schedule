@@ -218,15 +218,21 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           .where((value) => value.isNotEmpty)
           .toList();
 
+      final selectedValue = (metadata['selectedValue'] ?? '').toString().trim();
+
+      // WMT My Schedule opens on the current pay period. Capture that period
+      // and only the periods after it; older periods in the dropdown are ignored.
       if (_expectedPeriodValues.isEmpty) {
-        _expectedPeriodValues.addAll(options);
-      } else {
-        for (final value in options) {
-          if (!_expectedPeriodValues.contains(value)) _expectedPeriodValues.add(value);
+        var currentIndex = metadata['selectedIndex'] is int
+            ? metadata['selectedIndex'] as int
+            : options.indexOf(selectedValue);
+        if (currentIndex < 0 || currentIndex >= options.length) {
+          currentIndex = options.indexOf(selectedValue);
         }
+        if (currentIndex < 0) currentIndex = 0;
+        _expectedPeriodValues.addAll(options.skip(currentIndex));
       }
 
-      final selectedValue = (metadata['selectedValue'] ?? '').toString().trim();
       if (selectedValue.isNotEmpty && !_capturedPeriodValues.contains(selectedValue)) {
         final rawHtml = await _controller.runJavaScriptReturningResult('document.documentElement.outerHTML');
         final html = _normalizeJavaScriptString(rawHtml);
@@ -292,7 +298,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
         if (_noProgressRetries >= 5) {
           if (mounted) {
             setState(() => _error =
-                'WMT offered ${_expectedPeriodValues.length} pay periods, but only ${_capturedPeriodValues.length} could be loaded.');
+                'WMT offered ${_expectedPeriodValues.length} current/future pay periods, but only ${_capturedPeriodValues.length} could be loaded.');
           }
           await _finishWithCapturedPages();
           return;
@@ -336,7 +342,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Text(
-              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then try to open My Schedule and collect every available pay period automatically. Your password stays inside the FAA page and is not stored by the app.',
+              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then try to open My Schedule and collect the current and all future available pay periods automatically. Your password stays inside the FAA page and is not stored by the app.',
             ),
           ),
           Expanded(child: WebViewWidget(controller: _controller)),
