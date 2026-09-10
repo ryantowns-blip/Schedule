@@ -1,5 +1,6 @@
 import 'package:device_calendar_plus/device_calendar_plus.dart' as dc;
 
+import '../models/parsed_shift.dart';
 import 'wmt_schedule_extractor.dart';
 
 enum DuplicateHandling { updateExisting, createNew }
@@ -159,8 +160,10 @@ class CalendarSyncService {
     for (final entry in holiday) {
       final start = DateTime(entry.date.year, entry.date.month, entry.date.day);
       final end = start.add(const Duration(days: 1));
-      final description = '$_descriptionPrefix • Holiday Leave • WMT code: ${entry.shift.raw}';
-      final match = _findExistingOnDateByTitle(entry, existing, 'Holiday Leave');
+      final description =
+          '$_descriptionPrefix • Holiday Leave • WMT code: ${entry.shift.raw}';
+      final match =
+          _findExistingOnDateByTitle(entry, existing, 'Holiday Leave');
 
       if (match != null) {
         duplicates++;
@@ -193,16 +196,19 @@ class CalendarSyncService {
 
     final leave = annualLeaveShifts(shifts);
     if (leave.isNotEmpty) {
-      final leaveCalendarId = await _ensureAnnualLeaveCalendar(annualLeaveColorHex);
+      final leaveCalendarId =
+          await _ensureAnnualLeaveCalendar(annualLeaveColorHex);
       final existingLeave = await _existingAtcEvents(leaveCalendarId, leave);
       for (final entry in leave) {
         final shift = entry.shift;
         final start = _startFor(entry);
         final end = start.add(Duration(minutes: shift.durationMinutes));
-        final description = '$_descriptionPrefix • Annual Leave • WMT code: ${shift.raw}';
+        final description =
+            '$_descriptionPrefix • Annual Leave • WMT code: ${shift.raw}';
         final match = _findExistingFor(entry, existingLeave);
 
-        if (match != null && duplicateHandling == DuplicateHandling.updateExisting) {
+        if (match != null &&
+            duplicateHandling == DuplicateHandling.updateExisting) {
           await _calendar.updateEvent(
             eventId: match.instanceId,
             title: 'Annual Leave',
@@ -306,7 +312,8 @@ class CalendarSyncService {
       final sameDay = event.startDate.year == entry.date.year &&
           event.startDate.month == entry.date.month &&
           event.startDate.day == entry.date.day;
-      if (sameDay && event.title.trim().toLowerCase() == title.toLowerCase()) {
+      if (sameDay &&
+          event.title.trim().toLowerCase() == title.toLowerCase()) {
         return event;
       }
     }
@@ -319,7 +326,9 @@ class CalendarSyncService {
     final title = event.title.trim().toLowerCase();
     return title == 'annual leave' ||
         title == 'holiday leave' ||
-        RegExp(r'^[a-z$]*(?:xtra)?\d{3,4}[a-z$]*(?:xtra)?$', caseSensitive: false)
-            .hasMatch(event.title.trim());
+        RegExp(
+          r'^[a-z$]*(?:xtra)?\d{3,4}[a-z$]*(?:xtra)?$',
+          caseSensitive: false,
+        ).hasMatch(event.title.trim());
   }
 }
