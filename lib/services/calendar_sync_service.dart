@@ -12,6 +12,8 @@ class CalendarSyncResult {
     required this.duplicates,
     required this.annualLeaveCreated,
     required this.annualLeaveUpdated,
+    required this.holidayLeaveCreated,
+    required this.holidayLeaveUpdated,
   });
 
   final int created;
@@ -20,6 +22,8 @@ class CalendarSyncResult {
   final int duplicates;
   final int annualLeaveCreated;
   final int annualLeaveUpdated;
+  final int holidayLeaveCreated;
+  final int holidayLeaveUpdated;
 }
 
 class CalendarSyncService {
@@ -59,16 +63,29 @@ class CalendarSyncService {
           entry.shift.effectiveStartMinutes != null)
       .toList();
 
+  List<DatedShift> holidayLeaveShifts(List<DatedShift> shifts) => shifts
+      .where((entry) => entry.shift.shiftType == ShiftType.holidayLeave)
+      .toList();
+
   Future<int> countExistingMatches({
     required String calendarId,
     required List<DatedShift> shifts,
   }) async {
     final working = workingShifts(shifts);
-    if (working.isEmpty) return 0;
-    final existing = await _existingAtcEvents(calendarId, working);
+    final holiday = holidayLeaveShifts(shifts);
+    if (working.isEmpty && holiday.isEmpty) return 0;
+    final existing = await _existingAtcEvents(
+      calendarId,
+      [...working, ...holiday],
+    );
     var count = 0;
     for (final entry in working) {
       if (_findExistingFor(entry, existing) != null) count++;
+    }
+    for (final entry in holiday) {
+      if (_findExistingOnDateByTitle(entry, existing, 'Holiday Leave') != null) {
+        count++;
+      }
     }
     return count;
   }
@@ -86,14 +103,22 @@ class CalendarSyncService {
     var duplicates = 0;
     var annualLeaveCreated = 0;
     var annualLeaveUpdated = 0;
+    var holidayLeaveCreated = 0;
+    var holidayLeaveUpdated = 0;
 
     final working = workingShifts(shifts);
-    final existing = await _existingAtcEvents(calendarId, working);
+    final holiday = holidayLeaveShifts(shifts);
+    final existing = await _existingAtcEvents(
+      calendarId,
+      [...working, ...holiday],
+    );
 
     for (final entry in shifts) {
       final shift = entry.shift;
       final startMinutes = shift.effectiveStartMinutes;
-      if (shift.isAnnualLeave) continue;
+      if (shift.isAnnualLeave || shift.shiftType == ShiftType.holidayLeave) {
+        continue;
+      }
       if (shift.isNonWorking || startMinutes == null) {
         skipped++;
         continue;
@@ -129,6 +154,41 @@ class CalendarSyncService {
         reminders: reminders,
       );
       created++;
+    }
+
+    for (final entry in holiday) {
+      final start = DateTime(entry.date.year, entry.date.month, entry.date.day);
+      final end = start.add(const Duration(days: 1));
+      final description = '$_descriptionPrefix • Holiday Leave • WMT code: ${entry.shift.raw}';
+      final match = _findExistingOnDateByTitle(entry, existing, 'Holiday Leave');
+
+      if (match != null) {
+        duplicates++;
+        if (duplicateHandling == DuplicateHandling.updateExisting) {
+          await _calendar.updateEvent(
+            eventId: match.instanceId,
+            title: 'Holiday Leave',
+            startDate: start,
+            endDate: end,
+            isAllDay: true,
+            description: dc.Patch.set(description),
+            reminders: dc.Patch.set(reminders),
+          );
+          holidayLeaveUpdated++;
+          continue;
+        }
+      }
+
+      await _calendar.createEvent(
+        calendarId: calendarId,
+        title: 'Holiday Leave',
+        startDate: start,
+        endDate: end,
+        isAllDay: true,
+        description: description,
+        reminders: reminders,
+      );
+      holidayLeaveCreated++;
     }
 
     final leave = annualLeaveShifts(shifts);
@@ -173,6 +233,8 @@ class CalendarSyncService {
       duplicates: duplicates,
       annualLeaveCreated: annualLeaveCreated,
       annualLeaveUpdated: annualLeaveUpdated,
+      holidayLeaveCreated: holidayLeaveCreated,
+      holidayLeaveUpdated: holidayLeaveUpdated,
     );
   }
 
@@ -235,11 +297,28 @@ class CalendarSyncService {
     return null;
   }
 
+  dc.Event? _findExistingOnDateByTitle(
+    DatedShift entry,
+    List<dc.Event> events,
+    String title,
+  ) {
+    for (final event in events) {
+      final sameDay = event.startDate.year == entry.date.year &&
+          event.startDate.month == entry.date.month &&
+          event.startDate.day == entry.date.day;
+      if (sameDay && event.title.trim().toLowerCase() == title.toLowerCase()) {
+        return event;
+      }
+    }
+    return null;
+  }
+
   bool _looksLikeAtcManagerEvent(dc.Event event) {
     final description = event.description ?? '';
     if (description.contains(_descriptionPrefix)) return true;
     final title = event.title.trim().toLowerCase();
     return title == 'annual leave' ||
+        title == 'holiday leave' ||
         RegExp(r'^[a-z$]*(?:xtra)?\d{3,4}[a-z$]*(?:xtra)?$', caseSensitive: false)
             .hasMatch(event.title.trim());
   }
