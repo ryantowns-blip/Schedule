@@ -139,30 +139,51 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shift = entry?.shift;
+    final now = DateTime.now();
+    final isToday = now.year == date.year && now.month == date.month && now.day == date.day;
     final status = shift == null
         ? '—'
-        : shift.isSickLeave
-            ? 'Sick'
-            : shift.isDayOff
-                ? 'Off'
-                : shift.raw;
+        : shift.isAnnualLeave
+            ? 'Off'
+            : shift.isHolidayLeave
+                ? 'HL'
+                : shift.isSickLeave
+                    ? 'Sick'
+                    : shift.isDayOff
+                        ? 'Off'
+                        : shift.raw;
+
+    final scheme = Theme.of(context).colorScheme;
+    final background = shift?.isOvertime == true
+        ? scheme.errorContainer
+        : shift?.isSickLeave == true
+            ? scheme.secondaryContainer
+            : shift?.isAnnualLeave == true || shift?.isDayOff == true || shift?.isHolidayLeave == true
+                ? scheme.surfaceContainerHighest
+                : null;
 
     return Container(
       constraints: const BoxConstraints(minHeight: 86),
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
       decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        border: Border.all(
+          color: isToday ? scheme.primary : scheme.outlineVariant,
+          width: isToday ? 2.5 : 1,
+        ),
         borderRadius: BorderRadius.circular(8),
-        color: shift?.isOvertime == true
-            ? Theme.of(context).colorScheme.errorContainer
-            : shift?.isSickLeave == true
-                ? Theme.of(context).colorScheme.secondaryContainer
-                : shift?.isDayOff == true
-                    ? Theme.of(context).colorScheme.surfaceContainerHighest
-                    : null,
+        color: background,
       ),
       child: Column(
         children: [
+          if (isToday)
+            Text(
+              'TODAY',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 9,
+                  ),
+            ),
           Text(dayName, style: Theme.of(context).textTheme.labelSmall, maxLines: 1),
           Text('${date.month}/${date.day}', style: Theme.of(context).textTheme.labelSmall, maxLines: 1),
           const SizedBox(height: 5),
