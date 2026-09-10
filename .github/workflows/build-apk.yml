@@ -34,6 +34,16 @@ jobs:
             flutter create --platforms=android --project-name atc_schedule_manager .
           fi
 
+      - name: Configure Android calendar access
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'READ_CALENDAR' "$MANIFEST"; then
+            sed -i '/<manifest/a\    <uses-permission android:name="android.permission.READ_CALENDAR" />\n    <uses-permission android:name="android.permission.WRITE_CALENDAR" />' "$MANIFEST"
+          fi
+          if grep -q 'minSdk = flutter.minSdkVersion' android/app/build.gradle.kts; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' android/app/build.gradle.kts
+          fi
+
       - name: Get dependencies
         run: flutter pub get
 
