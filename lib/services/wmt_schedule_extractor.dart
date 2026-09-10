@@ -89,7 +89,18 @@ class WmtScheduleExtractor {
   }
 
   ParsedShift? _findShift(String text) {
-    for (final token in text.split(RegExp(r'\s+'))) {
+    final decoded = text
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&amp;', '&');
+
+    final annual = RegExp(r'A<[^>]+>', caseSensitive: false).firstMatch(decoded);
+    if (annual != null) {
+      final parsed = _tryParseShift(annual.group(0)!);
+      if (parsed != null) return parsed;
+    }
+
+    for (final token in decoded.split(RegExp(r'\s+'))) {
       final parsed = _tryParseShift(token);
       if (parsed != null) return parsed;
     }
@@ -99,6 +110,11 @@ class WmtScheduleExtractor {
   ParsedShift? _tryParseShift(String raw) {
     var token = raw.trim();
     if (token.isEmpty) return null;
+
+    token = token
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&amp;', '&');
 
     final annualMatch = RegExp(r'A<[^>]+>', caseSensitive: false).firstMatch(token);
     if (annualMatch != null) {
