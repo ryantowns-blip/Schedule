@@ -22,8 +22,25 @@ class ScheduleParser {
     if (normalized == 'X') return nonWorking(ShiftType.dayOff);
     if (normalized == 'SL') return nonWorking(ShiftType.sickLeave);
     if (normalized == 'HL') return nonWorking(ShiftType.holidayLeave);
-    if (RegExp(r'^A<[^>]+>$').hasMatch(normalized)) {
-      return nonWorking(ShiftType.annualLeave);
+    final annualMatch = RegExp(r'^A<(\d{3,4})>$').firstMatch(normalized);
+    if (annualMatch != null) {
+      final digits = annualMatch.group(1)!.padLeft(4, '0');
+      final hour = int.parse(digits.substring(0, 2));
+      final minute = int.parse(digits.substring(2, 4));
+      if (hour > 23 || minute > 59) {
+        throw FormatException('Invalid annual-leave start time in "$raw"');
+      }
+      return ParsedShift(
+        raw: raw,
+        startMinutes: hour * 60 + minute,
+        baseDurationMinutes: 8 * 60,
+        shiftType: ShiftType.annualLeave,
+        flexType: FlexType.none,
+        isSupervisor: false,
+        isCic: false,
+        overtimeBeforeMinutes: 0,
+        overtimeAfterMinutes: 0,
+      );
     }
 
     final isOvertime = normalized.contains(r'$');
