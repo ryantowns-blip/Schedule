@@ -134,9 +134,12 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       final holidayTotal = result.holidayLeaveCreated + result.holidayLeaveUpdated;
       setState(() {
         _syncing = false;
+        final removedText = result.deleted > 0
+            ? ', ${result.deleted} obsolete entr${result.deleted == 1 ? 'y' : 'ies'} removed'
+            : '';
         _message = widget.changeUpdateMode
-            ? 'Calendar changes applied: ${result.updated} shift${result.updated == 1 ? '' : 's'} updated${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.'
-            : 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.';
+            ? 'Calendar changes applied: ${result.updated} shift${result.updated == 1 ? '' : 's'} updated$removedText${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.'
+            : 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated$removedText${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -172,7 +175,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'Only the dates with detected schedule changes are shown here. Existing Web Schedule Manager events on those dates will be updated instead of duplicated.',
+                                'Only the dates with detected schedule changes are shown here. Existing Web Schedule Manager events on those dates will be updated, replaced, or removed as needed.',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                             ),
