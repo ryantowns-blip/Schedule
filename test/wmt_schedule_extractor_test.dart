@@ -9,7 +9,7 @@ void main() {
     expect(extractor.normalizeCapturedHtml(captured), '<html><body>ok</body></html>');
   });
 
-  test('extracts real WMT pay period table without borrowing neighboring X values', () {
+  test('extracts real WMT pay period table including sick leave', () {
     const html = r'''
       <table>
         <tr>
@@ -33,11 +33,12 @@ void main() {
       </table>
     ''';
     final shifts = extractor.extract(html);
-    // SL has no numeric start time, so it is intentionally not treated as a
-    // calendar shift yet. Every other dated WMT shift should be captured.
-    expect(shifts, hasLength(13));
+    expect(shifts, hasLength(14));
     expect(shifts.where((e) => e.shift.isDayOff).map((e) => e.date.day), [10, 17]);
-    expect(shifts.first.shift.raw, '0715Q');
+    final sick = shifts.singleWhere((e) => e.date.day == 7);
+    expect(sick.shift.isSickLeave, isTrue);
+    expect(sick.shift.label, 'Sick Leave');
+    expect(sick.shift.startMinutes, isNull);
     expect(shifts.any((e) => e.shift.raw == r'0500L$'), isTrue);
     expect(shifts.any((e) => e.shift.raw == 'C0600L'), isTrue);
     expect(shifts.any((e) => e.shift.raw == r'1300L$'), isTrue);
