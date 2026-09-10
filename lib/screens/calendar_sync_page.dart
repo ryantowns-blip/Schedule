@@ -1,13 +1,19 @@
 import 'package:device_calendar_plus/device_calendar_plus.dart' as dc;
 import 'package:flutter/material.dart';
 
+import '../models/schedule_display_settings.dart';
 import '../services/calendar_sync_service.dart';
 import '../services/wmt_schedule_extractor.dart';
 
 class CalendarSyncPage extends StatefulWidget {
-  const CalendarSyncPage({super.key, required this.shifts});
+  const CalendarSyncPage({
+    super.key,
+    required this.shifts,
+    required this.displaySettings,
+  });
 
   final List<DatedShift> shifts;
+  final ScheduleDisplaySettings displaySettings;
 
   @override
   State<CalendarSyncPage> createState() => _CalendarSyncPageState();
@@ -19,6 +25,9 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   String? _selectedCalendarId;
   bool _loading = true;
   bool _syncing = false;
+  bool _reminder24h = false;
+  bool _reminder2h = false;
+  bool _reminder30m = false;
   String? _message;
 
   @override
@@ -35,9 +44,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         _calendars = calendars;
         _selectedCalendarId = calendars.isEmpty ? null : calendars.first.id;
         _loading = false;
-        _message = calendars.isEmpty
-            ? 'No writable calendars were found on this device.'
-            : null;
+        _message = calendars.isEmpty ? 'No writable calendars were found on this device.' : null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -48,23 +55,37 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     }
   }
 
-  Future<DuplicateHandling?> _chooseDuplicateHandling(int duplicateCount) {
+  List<Duration> get _selectedReminders {
+    final reminders = <Duration>[];
+    if (_reminder24h) reminders.add(const Duration(days: 1));
+    if (_reminder2h) reminders.add(const Duration(hours: 2));
+    if (_reminder30m) reminders.add(const Duration(minutes: 30));
+    return reminders;
+  }
+
+  String _annualLeaveColorHex() {
+    final color = widget.displaySettings.annualLeaveColor ?? const Color(0xFFD8F3DC);
+    final hex = color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase();
+    return '#$hex';
+  }
+
+  Future<DuplicateHandling?> _askDuplicateHandling(int count) async {
     return showDialog<DuplicateHandling>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Existing shifts found'),
-        content: Text(
-          '$duplicateCount shift${duplicateCount == 1 ? '' : 's'} already appear to be in this calendar. What should ATC Schedule Manager do with all matching shifts?',
-        ),
+        content: Text('$count matching ATC Schedule Manager shift${count == 1 ? '' : 's'} already exist in this calendar. What should the app do with matches?'),
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(DuplicateHandling.createNew),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, DuplicateHandling.createNew),
             child: const Text('Create New'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(DuplicateHandling.updateExisting),
+            onPressed: () => Navigator.pop(context, DuplicateHandling.updateExisting),
             child: const Text('Update Existing'),
           ),
         ],
@@ -78,59 +99,43 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
     setState(() {
       _syncing = true;
-      _message = 'Checking the selected calendar for existing shifts…';
+      _message = null;
     });
 
     try {
-      final duplicateCount = await _service.countExistingMatches(
+      final matches = await _service.countExistingMatches(
         calendarId: calendarId,
         shifts: widget.shifts,
       );
-      if (!mounted) return;
-
       var handling = DuplicateHandling.updateExisting;
-      if (duplicateCount > 0) {
-        setState(() => _syncing = false);
-        final choice = await _chooseDuplicateHandling(duplicateCount);
-        if (!mounted || choice == null) {
-          setState(() => _message = 'Calendar sync cancelled.');
+      if (matches > 0) {
+        if (!mounted) return;
+        final choice = await _askDuplicateHandling(matches);
+        if (choice == null) {
+          if (mounted) setState(() => _syncing = false);
           return;
         }
         handling = choice;
-        setState(() {
-          _syncing = true;
-          _message = handling == DuplicateHandling.updateExisting
-              ? 'Updating existing shifts and adding new ones…'
-              : 'Creating new calendar events…';
-        });
-      } else {
-        setState(() => _message = 'Adding shifts to the selected calendar…');
       }
 
-      final result = await _service.syncWorkingShiftEvents(
+      final result = await _service.syncShiftEvents(
         calendarId: calendarId,
         shifts: widget.shifts,
         duplicateHandling: handling,
+        reminders: _selectedReminders,
+        annualLeaveColorHex: _annualLeaveColorHex(),
       );
       if (!mounted) return;
-
-      final parts = <String>[];
-      if (result.created > 0) parts.add('${result.created} added');
-      if (result.updated > 0) parts.add('${result.updated} updated');
-      if (result.duplicates > 0 && handling == DuplicateHandling.createNew) {
-        parts.add('${result.duplicates} duplicates created by choice');
-      }
-      if (parts.isEmpty) parts.add('No working shifts changed');
-
+      final leaveTotal = result.annualLeaveCreated + result.annualLeaveUpdated;
       setState(() {
         _syncing = false;
-        _message = '${parts.join(' • ')}.';
+        _message = 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated${leaveTotal > 0 ? ', and $leaveTotal Annual Leave entries synced' : ''}.';
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _syncing = false;
-        _message = 'Calendar sync could not be completed: $e';
+        _message = 'Calendar sync could not be completed.';
       });
     }
   }
@@ -138,6 +143,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   @override
   Widget build(BuildContext context) {
     final workingCount = _service.workingShifts(widget.shifts).length;
+    final leaveCount = _service.annualLeaveShifts(widget.shifts).length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Add to Calendar')),
@@ -153,14 +159,12 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Calendar destination',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
+                          Text('Calendar destination', style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 12),
                           if (_calendars.isNotEmpty)
                             DropdownButtonFormField<String>(
                               value: _selectedCalendarId,
+                              isExpanded: true,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
                                 labelText: 'Calendar',
@@ -170,25 +174,55 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                                   DropdownMenuItem(
                                     value: calendar.id,
                                     child: Text(
-                                      calendar.accountName == null ||
-                                              calendar.accountName!.isEmpty
+                                      calendar.accountName == null || calendar.accountName!.isEmpty
                                           ? calendar.name
                                           : '${calendar.name} • ${calendar.accountName}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                               ],
-                              onChanged: (value) =>
-                                  setState(() => _selectedCalendarId = value),
+                              onChanged: (value) => setState(() => _selectedCalendarId = value),
                             ),
                           const SizedBox(height: 16),
                           Text('$workingCount working shifts are ready to sync.'),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Days off and leave are not added. If matching ATC Schedule Manager events already exist, you will be asked whether to update them or create new copies. The choice applies to all matches in this sync.',
+                          if (leaveCount > 0) ...[
+                            const SizedBox(height: 6),
+                            Text('$leaveCount Annual Leave entr${leaveCount == 1 ? 'y is' : 'ies are'} also ready to sync.'),
+                          ],
+                          const SizedBox(height: 8),
+                          const Text('Work events use the exact WMT shift name as the calendar title. Example: 0615L is titled 0615L and starts at the late-flex time, 15 minutes after 06:15.'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Reminders', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 4),
+                          const Text('Leave all options off for no reminders.'),
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('24 hours before'),
+                            value: _reminder24h,
+                            onChanged: (value) => setState(() => _reminder24h = value ?? false),
                           ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Events currently use three reminders: 24 hours, 2 hours, and 30 minutes before shift start.',
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('2 hours before'),
+                            value: _reminder2h,
+                            onChanged: (value) => setState(() => _reminder2h = value ?? false),
+                          ),
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('30 minutes before'),
+                            value: _reminder30m,
+                            onChanged: (value) => setState(() => _reminder30m = value ?? false),
                           ),
                         ],
                       ),
@@ -213,7 +247,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.event_available_outlined),
-                    label: Text(_syncing ? 'Syncing shifts…' : 'Sync Working Shifts'),
+                    label: Text(_syncing ? 'Syncing…' : 'Sync Schedule'),
                   ),
                 ],
               ),
