@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'models/parsed_shift.dart';
 import 'screens/pay_period_schedule_view.dart';
-import 'screens/wmt_portal_page.dart';
-import 'services/schedule_parser.dart';
-import 'services/wmt_auth_service.dart';
+import 'screens/update_schedule_page.dart';
 import 'services/wmt_schedule_extractor.dart';
-
-const _wmtLoginUrl = 'https://wmtscheduler.faa.gov/WMT_LogOn/';
 
 void main() => runApp(const AtcScheduleManagerApp());
 
@@ -23,203 +19,174 @@ class AtcScheduleManagerApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: const ScheduleParserPage(),
+      home: const ScheduleHomePage(),
     );
   }
 }
 
-class ScheduleParserPage extends StatefulWidget {
-  const ScheduleParserPage({super.key});
+class ScheduleHomePage extends StatefulWidget {
+  const ScheduleHomePage({super.key});
 
   @override
-  State<ScheduleParserPage> createState() => _ScheduleParserPageState();
+  State<ScheduleHomePage> createState() => _ScheduleHomePageState();
 }
 
-class _ScheduleParserPageState extends State<ScheduleParserPage> {
-  final _controller = TextEditingController(text: '1400\nL1400\nQ1400\n\$1400\nX\nXtra1400');
-  final _emailController = TextEditingController();
-  final _parser = const ScheduleParser();
-  final _auth = WmtAuthService();
-  final _extractor = const WmtScheduleExtractor();
+class _ScheduleHomePageState extends State<ScheduleHomePage> {
+  static const _htmlKey = 'saved_wmt_schedule_html';
+  static const _updatedKey = 'saved_wmt_schedule_updated_at';
 
-  List<ParsedShift> _results = const [];
-  List<DatedShift> _wmtShifts = const [];
+  final _extractor = const WmtScheduleExtractor();
+  List<DatedShift> _shifts = const [];
+  DateTime? _lastUpdated;
+  bool _loading = true;
   String? _error;
-  String? _wmtError;
-  String? _capturedWmtHtml;
 
   @override
   void initState() {
     super.initState();
-    _parse();
+    _loadSavedSchedule();
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    _emailController.dispose();
-    super.dispose();
-  }
+  Future<void> _loadSavedSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    final html = prefs.getString(_htmlKey);
+    final updated = prefs.getString(_updatedKey);
 
-  void _parse() {
+    if (!mounted) return;
+
+    if (html == null || html.isEmpty) {
+      setState(() => _loading = false);
+      return;
+    }
+
     try {
-      final parsed = _parser.parseLines(_controller.text);
+      final shifts = _extractor.extract(html);
       setState(() {
-        _results = parsed;
-        _error = null;
+        _shifts = shifts;
+        _lastUpdated = updated == null ? null : DateTime.tryParse(updated);
+        _loading = false;
+        _error = shifts.isEmpty ? 'Saved WMT data was found, but no schedule entries could be read.' : null;
       });
     } catch (e) {
       setState(() {
-        _results = const [];
-        _error = e.toString();
+        _loading = false;
+        _error = 'Could not load the saved schedule.';
       });
     }
   }
 
-  void _beginLogin() => setState(_auth.beginLogin);
-
-  void _submitEmail() => setState(() => _auth.submitEmail(_emailController.text));
-
-  Future<void> _openMyAccess() async {
+  Future<void> _updateSchedule() async {
     final html = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const WmtPortalPage(startUrl: _wmtLoginUrl)),
+      MaterialPageRoute(builder: (_) => const UpdateSchedulePage()),
     );
+
     if (!mounted || html == null || html.isEmpty) return;
 
-    final extracted = _extractor.extract(html);
+    final shifts = _extractor.extract(html);
+    if (shifts.isEmpty) {
+      setState(() => _error = 'The WMT page was captured, but no schedule entries were recognized.');
+      return;
+    }
+
+    final now = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_htmlKey, html);
+    await prefs.setString(_updatedKey, now.toIso8601String());
+
+    if (!mounted) return;
     setState(() {
-      _capturedWmtHtml = html;
-      _wmtShifts = extracted;
-      _wmtError = extracted.isEmpty
-          ? 'WMT page captured, but no dated shifts were recognized yet.'
-          : null;
-      _auth.authenticationSucceeded();
+      _shifts = shifts;
+      _lastUpdated = now;
+      _error = null;
     });
   }
 
-  void _signOut() {
-    _emailController.clear();
-    setState(() {
-      _capturedWmtHtml = null;
-      _wmtShifts = const [];
-      _wmtError = null;
-      _auth.signOut();
-    });
-  }
-
-  Widget _buildWmtCard() {
-    final state = _auth.state;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(children: [
-              const Icon(Icons.cloud_sync),
-              const SizedBox(width: 8),
-              Text('WMT Scheduler', style: Theme.of(context).textTheme.titleMedium),
-            ]),
-            const SizedBox(height: 8),
-            if (state.step == WmtAuthStep.signedOut) ...[
-              const Text('Connect to WMT through the FAA MyAccess login flow.'),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: _beginLogin,
-                icon: const Icon(Icons.login),
-                label: const Text('Connect to WMT'),
-              ),
-            ] else if (state.step == WmtAuthStep.email) ...[
-              const Text('Step 1 of 2 — enter your FAA email address.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  labelText: 'FAA email',
-                  border: const OutlineInputBorder(),
-                  errorText: state.message,
-                ),
-                onSubmitted: (_) => _submitEmail(),
-              ),
-              const SizedBox(height: 12),
-              FilledButton(onPressed: _submitEmail, child: const Text('Continue')),
-            ] else if (state.step == WmtAuthStep.password) ...[
-              Text('Step 2 of 2 — MyAccess sign-in for ${state.email ?? 'your FAA account'}.'),
-              const SizedBox(height: 8),
-              const Text('Your password is entered only inside the FAA MyAccess page and is not stored by ATC Schedule Manager.'),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: _openMyAccess,
-                icon: const Icon(Icons.open_in_browser),
-                label: const Text('Open FAA MyAccess'),
-              ),
-            ] else ...[
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.check_circle),
-                title: const Text('WMT session captured'),
-                subtitle: Text(_capturedWmtHtml == null
-                    ? (state.email ?? 'FAA account')
-                    : '${state.email ?? 'FAA account'} • page captured'),
-              ),
-              if (_wmtError != null) ...[
-                Text(_wmtError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                const SizedBox(height: 8),
-              ],
-              if (_wmtShifts.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                PayPeriodScheduleView(shifts: _wmtShifts),
-                const SizedBox(height: 12),
-              ],
-              OutlinedButton(onPressed: _signOut, child: const Text('Disconnect')),
-            ],
-          ],
-        ),
-      ),
-    );
+  String _formatUpdated(DateTime date) {
+    final hour = date.hour == 0 ? 12 : date.hour > 12 ? date.hour - 12 : date.hour;
+    final minute = date.minute.toString().padLeft(2, '0');
+    final suffix = date.hour >= 12 ? 'PM' : 'AM';
+    return '${date.month}/${date.day}/${date.year} $hour:$minute $suffix';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ATC Schedule Manager')),
+      appBar: AppBar(
+        title: const Text('ATC Schedule Manager'),
+        actions: [
+          IconButton(
+            tooltip: 'Update schedule',
+            onPressed: _updateSchedule,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _buildWmtCard(),
-            const SizedBox(height: 12),
-            ExpansionTile(
-              title: const Text('Parser test tools'),
-              children: [
-                TextField(
-                  controller: _controller,
-                  minLines: 4,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '1400\nL1400\n\$1400\nX',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _parse,
-                  icon: const Icon(Icons.schedule),
-                  label: const Text('Parse schedule'),
-                ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  ),
-                ..._results.map((shift) => ListTile(
-                      title: Text('${shift.raw} • ${shift.label}'),
-                    )),
-              ],
-            ),
-          ],
-        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_error != null) ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          _error!,
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_shifts.isNotEmpty) ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: PayPeriodScheduleView(shifts: _shifts),
+                      ),
+                    ),
+                    if (_lastUpdated != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Last updated ${_formatUpdated(_lastUpdated!)}',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _updateSchedule,
+                      icon: const Icon(Icons.sync),
+                      label: const Text('Update Schedule'),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 80),
+                    Icon(
+                      Icons.calendar_month_outlined,
+                      size: 72,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No saved schedule yet',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Connect to WMT once to save your schedule on this phone. After that, the saved schedule will be the first thing you see when the app opens.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: _updateSchedule,
+                      icon: const Icon(Icons.sync),
+                      label: const Text('Get Schedule'),
+                    ),
+                  ],
+                ],
+              ),
       ),
     );
   }
