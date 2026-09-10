@@ -76,12 +76,16 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       _message = null;
     });
     try {
-      final color = widget.displaySettings.annualLeaveColor ?? const Color(0xFFD8F3DC);
-      final hex = '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
-      final result = await _calendar.syncApprovedLeave(entries: approved, colorHex: hex);
+      final color =
+          widget.displaySettings.annualLeaveColor ?? const Color(0xFFD8F3DC);
+      final hex =
+          '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+      final result =
+          await _calendar.syncApprovedLeave(entries: approved, colorHex: hex);
       if (!mounted) return;
       setState(() {
-        _message = 'Calendar sync complete: ${result.created} added, ${result.skipped} already present.';
+        _message =
+            'Calendar sync complete: ${result.created} added, ${result.skipped} already present.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -94,10 +98,110 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
   String _date(DateTime date) => '${date.month}/${date.day}/${date.year}';
 
   String _updatedText(DateTime date) {
-    final hour = date.hour == 0 ? 12 : date.hour > 12 ? date.hour - 12 : date.hour;
+    final hour =
+        date.hour == 0 ? 12 : date.hour > 12 ? date.hour - 12 : date.hour;
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
     return '${date.month}/${date.day}/${date.year} at $hour:$minute $suffix';
+  }
+
+  Widget _statusPill(BuildContext context, UpcomingLeaveEntry entry) {
+    final scheme = Theme.of(context).colorScheme;
+    final approved = entry.isApproved;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: approved ? const Color(0xFFD8F3DC) : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        entry.status,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: approved ? const Color(0xFF176B2C) : scheme.onSurfaceVariant,
+            ),
+      ),
+    );
+  }
+
+  Widget _leaveTable(BuildContext context) {
+    final theme = Theme.of(context);
+    final divider = Divider(height: 1, thickness: 0.7, color: theme.dividerColor);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    'DATE',
+                    style: theme.textTheme.labelMedium
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'TYPE',
+                    style: theme.textTheme.labelMedium
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    'STATUS',
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.labelMedium
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (var i = 0; i < _entries.length; i++) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Text(
+                      _date(_entries[i].date),
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Annual',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 4,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: _statusPill(context, _entries[i]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (i != _entries.length - 1) divider,
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -118,7 +222,7 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
                 children: [
                   if (_message != null) ...[
                     Card(
@@ -127,7 +231,7 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
                         child: Text(_message!),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                   ],
                   if (_entries.isEmpty) ...[
                     const SizedBox(height: 60),
@@ -154,22 +258,35 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
                       label: const Text('Get Upcoming Leave'),
                     ),
                   ] else ...[
-                    for (final entry in _entries)
-                      Card(
-                        child: ListTile(
-                          leading: Icon(
-                            entry.isApproved ? Icons.check_circle_outline : Icons.pending_outlined,
-                          ),
-                          title: Text(_date(entry.date)),
-                          subtitle: Text('Annual Leave • ${entry.status}'),
-                          trailing: entry.isApproved
-                              ? const Chip(label: Text('Approved'))
-                              : Chip(label: Text(entry.status)),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_month_outlined,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '$approvedCount approved future leave day${approvedCount == 1 ? '' : 's'}. Existing Annual Leave calendar entries are checked before anything is added.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    _leaveTable(context),
                     const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: approvedCount == 0 || _syncing ? null : _syncApproved,
+                      onPressed:
+                          approvedCount == 0 || _syncing ? null : _syncApproved,
                       icon: _syncing
                           ? const SizedBox(
                               width: 18,
@@ -177,16 +294,18 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.event_available_outlined),
-                      label: Text('Add Approved Leave to Calendar ($approvedCount)'),
+                      label: Text(
+                        'Add Approved Leave to Calendar ($approvedCount)',
+                      ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: _refresh,
                       icon: const Icon(Icons.refresh),
                       label: const Text('Refresh from WMT'),
                     ),
                     if (_lastUpdated != null) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       Text(
                         'Leave data last updated: ${_updatedText(_lastUpdated!)}',
                         textAlign: TextAlign.center,
