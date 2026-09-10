@@ -22,9 +22,14 @@ void main() {
     expect(shift.isOvertime, isTrue);
   });
 
-  test('late flex starts 15 minutes late', () {
-    final shift = parser.parse('L1400');
-    expect(shift.effectiveStartMinutes, 14 * 60 + 15);
+  test('late flex uses time written in shift name', () {
+    final shift = parser.parse('0615L');
+    expect(shift.effectiveStartMinutes, 6 * 60 + 15);
+  });
+
+  test('q flex uses time written in shift name', () {
+    final shift = parser.parse('0715Q');
+    expect(shift.effectiveStartMinutes, 7 * 60 + 15);
   });
 
   test('xtra before adds two hours before', () {
