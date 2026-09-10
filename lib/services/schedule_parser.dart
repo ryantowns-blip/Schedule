@@ -7,32 +7,23 @@ class ScheduleParser {
     final raw = input.trim();
     final normalized = raw.replaceAll(' ', '').toUpperCase();
 
-    if (normalized == 'X') {
-      return ParsedShift(
-        raw: raw,
-        startMinutes: null,
-        baseDurationMinutes: 0,
-        shiftType: ShiftType.dayOff,
-        flexType: FlexType.none,
-        isSupervisor: false,
-        isCic: false,
-        overtimeBeforeMinutes: 0,
-        overtimeAfterMinutes: 0,
-      );
-    }
+    ParsedShift nonWorking(ShiftType type) => ParsedShift(
+          raw: raw,
+          startMinutes: null,
+          baseDurationMinutes: 0,
+          shiftType: type,
+          flexType: FlexType.none,
+          isSupervisor: false,
+          isCic: false,
+          overtimeBeforeMinutes: 0,
+          overtimeAfterMinutes: 0,
+        );
 
-    if (normalized == 'SL') {
-      return ParsedShift(
-        raw: raw,
-        startMinutes: null,
-        baseDurationMinutes: 0,
-        shiftType: ShiftType.sickLeave,
-        flexType: FlexType.none,
-        isSupervisor: false,
-        isCic: false,
-        overtimeBeforeMinutes: 0,
-        overtimeAfterMinutes: 0,
-      );
+    if (normalized == 'X') return nonWorking(ShiftType.dayOff);
+    if (normalized == 'SL') return nonWorking(ShiftType.sickLeave);
+    if (normalized == 'HL') return nonWorking(ShiftType.holidayLeave);
+    if (RegExp(r'^A<[^>]+>$').hasMatch(normalized)) {
+      return nonWorking(ShiftType.annualLeave);
     }
 
     final isOvertime = normalized.contains(r'$');
