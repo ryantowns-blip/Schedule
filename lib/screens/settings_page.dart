@@ -54,6 +54,9 @@ class _SettingsPageState extends State<SettingsPage> {
         case _ColorTarget.off:
           _settings = _settings.copyWith(offColor: color, clearOff: color == null);
           break;
+        case _ColorTarget.annualLeave:
+          _settings = _settings.copyWith(annualLeaveColor: color, clearAnnualLeave: color == null);
+          break;
         case _ColorTarget.sick:
           _settings = _settings.copyWith(sickColor: color, clearSick: color == null);
           break;
@@ -72,6 +75,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return _settings.overtimeColor;
       case _ColorTarget.off:
         return _settings.offColor;
+      case _ColorTarget.annualLeave:
+        return _settings.annualLeaveColor;
       case _ColorTarget.sick:
         return _settings.sickColor;
       case _ColorTarget.holiday:
@@ -84,35 +89,30 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Schedule Settings'),
-        actions: [
-          TextButton(onPressed: _reset, child: const Text('Reset')),
-        ],
+        actions: [TextButton(onPressed: _reset, child: const Text('Reset'))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text('Shift colors', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 6),
-          const Text('Choose the background used for each type of schedule entry. Default uses the normal app background.'),
+          const Text('Choose the background used for each type of schedule entry. Annual Leave also uses this color for its dedicated calendar.'),
           const SizedBox(height: 16),
           _ColorRow(label: 'Regular shift', value: _valueFor(_ColorTarget.regular), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.regular, c)),
           _ColorRow(label: 'Overtime', value: _valueFor(_ColorTarget.overtime), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.overtime, c)),
-          _ColorRow(label: 'Off / Annual Leave', value: _valueFor(_ColorTarget.off), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.off, c)),
+          _ColorRow(label: 'Day Off', value: _valueFor(_ColorTarget.off), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.off, c)),
+          _ColorRow(label: 'Annual Leave', value: _valueFor(_ColorTarget.annualLeave), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.annualLeave, c)),
           _ColorRow(label: 'Sick Leave', value: _valueFor(_ColorTarget.sick), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.sick, c)),
           _ColorRow(label: 'Holiday Leave', value: _valueFor(_ColorTarget.holiday), palette: _palette, onChanged: (c) => _setColor(_ColorTarget.holiday, c)),
           const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _saveAndClose,
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Save Settings'),
-          ),
+          FilledButton.icon(onPressed: _saveAndClose, icon: const Icon(Icons.save_outlined), label: const Text('Save Settings')),
         ],
       ),
     );
   }
 }
 
-enum _ColorTarget { regular, overtime, off, sick, holiday }
+enum _ColorTarget { regular, overtime, off, annualLeave, sick, holiday }
 
 class _ColorRow extends StatelessWidget {
   const _ColorRow({required this.label, required this.value, required this.palette, required this.onChanged});
@@ -149,9 +149,7 @@ class _ColorRow extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: color ?? Theme.of(context).colorScheme.surface,
                         border: Border.all(
-                          color: _same(value, color)
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.outlineVariant,
+                          color: _same(value, color) ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outlineVariant,
                           width: _same(value, color) ? 3 : 1,
                         ),
                       ),
