@@ -124,7 +124,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   Future<void> _openCalendarSync() async {
     if (_shifts.isEmpty) return;
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => CalendarSyncPage(shifts: _shifts)),
+      MaterialPageRoute(
+        builder: (_) => CalendarSyncPage(
+          shifts: _shifts,
+          displaySettings: _displaySettings,
+        ),
+      ),
     );
   }
 
