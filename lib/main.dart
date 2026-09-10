@@ -138,8 +138,6 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       for (final entry in current) dayKey(entry.date): entry,
     };
 
-    // Only compare dates present in both pulls. This avoids flagging a newly
-    // available future pay period (or an expired old one) as a shift change.
     final commonDays = oldByDay.keys
         .where(newByDay.containsKey)
         .toList()
@@ -161,6 +159,29 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     return changes;
   }
 
+  Set<String> _changedDayKeys() {
+    final keys = <String>{};
+    final datePattern = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4}):');
+    for (final change in _scheduleChanges) {
+      final match = datePattern.firstMatch(change);
+      if (match == null) continue;
+      final month = int.tryParse(match.group(1)!);
+      final day = int.tryParse(match.group(2)!);
+      final year = int.tryParse(match.group(3)!);
+      if (month == null || day == null || year == null) continue;
+      keys.add('$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}');
+    }
+    return keys;
+  }
+
+  List<DatedShift> _changedShifts() {
+    final keys = _changedDayKeys();
+    return _shifts.where((entry) {
+      final key = '${entry.date.year}-${entry.date.month.toString().padLeft(2, '0')}-${entry.date.day.toString().padLeft(2, '0')}';
+      return keys.contains(key);
+    }).toList();
+  }
+
   Future<void> _openSettings() async {
     final result = await Navigator.of(context).push<ScheduleDisplaySettings>(
       MaterialPageRoute(
@@ -178,6 +199,20 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
         builder: (_) => CalendarSyncPage(
           shifts: _shifts,
           displaySettings: _displaySettings,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openChangedCalendarSync() async {
+    final changed = _changedShifts();
+    if (changed.isEmpty) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => CalendarSyncPage(
+          shifts: changed,
+          displaySettings: _displaySettings,
+          changeUpdateMode: true,
         ),
       ),
     );
@@ -314,6 +349,21 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                                   padding: const EdgeInsets.only(bottom: 5),
                                   child: Text('• $change'),
                                 ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: _changedShifts().isEmpty ? null : _openChangedCalendarSync,
+                                  icon: const Icon(Icons.edit_calendar_outlined),
+                                  label: Text(
+                                    'Update Calendar (${_scheduleChanges.length})',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Only the dates with detected changes will be sent to calendar update mode.',
+                              ),
                             ],
                           ],
                         ),
