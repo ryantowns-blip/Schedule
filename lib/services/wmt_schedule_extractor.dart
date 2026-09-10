@@ -31,9 +31,6 @@ class WmtScheduleExtractor {
     final html = normalizeCapturedHtml(capturedHtml);
     if (html.isEmpty) return const [];
 
-    // Production WMT renders each day as a table cell whose visible text is:
-    // weekday, MM/DD/YYYY, then the shift code. Parse the cell as a unit so a
-    // date can never accidentally attach to a neighboring day's X/shift.
     final results = <DatedShift>[];
     final cellPattern = RegExp(r'<t[dh]\b[^>]*>([\s\S]*?)</t[dh]>', caseSensitive: false);
     for (final match in cellPattern.allMatches(html)) {
@@ -48,7 +45,6 @@ class WmtScheduleExtractor {
     }
     if (results.isNotEmpty) return _dedupeAndSort(results);
 
-    // Support alternate WMT markup carrying explicit date attributes.
     final datedElement = RegExp(
       r'''<[^>]*(?:data-date|date)\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)</[^>]+>''',
       caseSensitive: false,
@@ -61,8 +57,6 @@ class WmtScheduleExtractor {
     }
     if (results.isNotEmpty) return _dedupeAndSort(results);
 
-    // Last-resort visible-text fallback. Only accept the first token directly
-    // following each date; do not scan ahead into another day's cell.
     final text = _stripTags(html);
     final pairPattern = RegExp(
       r'\b(\d{1,2}/\d{1,2}/\d{2,4})\b\s+([^\s]+)',
@@ -95,13 +89,12 @@ class WmtScheduleExtractor {
   }
 
   ParsedShift? _tryParseShift(String raw) {
-    var token = raw.trim().replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+    final token = raw.trim().replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
     if (token.isEmpty) return null;
-    // WMT commonly puts L/S/C/$ after the time (0715Q, 0500L$, C0600L),
-    // while the core parser accepts those flags in either position once the
-    // token has been validated here.
-    if (!RegExp(r'^(?:X|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$', caseSensitive: false)
-        .hasMatch(token)) return null;
+    if (!RegExp(
+      r'^(?:X|SL|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(token)) return null;
     try {
       return parser.parse(token);
     } catch (_) {
