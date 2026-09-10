@@ -35,7 +35,9 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         _calendars = calendars;
         _selectedCalendarId = calendars.isEmpty ? null : calendars.first.id;
         _loading = false;
-        _message = calendars.isEmpty ? 'No writable calendars were found on this device.' : null;
+        _message = calendars.isEmpty
+            ? 'No writable calendars were found on this device.'
+            : null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -46,30 +48,89 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     }
   }
 
+  Future<DuplicateHandling?> _chooseDuplicateHandling(int duplicateCount) {
+    return showDialog<DuplicateHandling>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Existing shifts found'),
+        content: Text(
+          '$duplicateCount shift${duplicateCount == 1 ? '' : 's'} already appear to be in this calendar. What should ATC Schedule Manager do with all matching shifts?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(DuplicateHandling.createNew),
+            child: const Text('Create New'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(context).pop(DuplicateHandling.updateExisting),
+            child: const Text('Update Existing'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _sync() async {
     final calendarId = _selectedCalendarId;
     if (calendarId == null || _syncing) return;
 
     setState(() {
       _syncing = true;
-      _message = null;
+      _message = 'Checking the selected calendar for existing shifts…';
     });
 
     try {
-      final result = await _service.createWorkingShiftEvents(
+      final duplicateCount = await _service.countExistingMatches(
         calendarId: calendarId,
         shifts: widget.shifts,
       );
       if (!mounted) return;
+
+      var handling = DuplicateHandling.updateExisting;
+      if (duplicateCount > 0) {
+        setState(() => _syncing = false);
+        final choice = await _chooseDuplicateHandling(duplicateCount);
+        if (!mounted || choice == null) {
+          setState(() => _message = 'Calendar sync cancelled.');
+          return;
+        }
+        handling = choice;
+        setState(() {
+          _syncing = true;
+          _message = handling == DuplicateHandling.updateExisting
+              ? 'Updating existing shifts and adding new ones…'
+              : 'Creating new calendar events…';
+        });
+      } else {
+        setState(() => _message = 'Adding shifts to the selected calendar…');
+      }
+
+      final result = await _service.syncWorkingShiftEvents(
+        calendarId: calendarId,
+        shifts: widget.shifts,
+        duplicateHandling: handling,
+      );
+      if (!mounted) return;
+
+      final parts = <String>[];
+      if (result.created > 0) parts.add('${result.created} added');
+      if (result.updated > 0) parts.add('${result.updated} updated');
+      if (result.duplicates > 0 && handling == DuplicateHandling.createNew) {
+        parts.add('${result.duplicates} duplicates created by choice');
+      }
+      if (parts.isEmpty) parts.add('No working shifts changed');
+
       setState(() {
         _syncing = false;
-        _message = 'Added ${result.created} working shifts to the selected calendar.';
+        _message = '${parts.join(' • ')}.';
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _syncing = false;
-        _message = 'Calendar sync could not be completed.';
+        _message = 'Calendar sync could not be completed: $e';
       });
     }
   }
@@ -92,7 +153,10 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Calendar destination', style: Theme.of(context).textTheme.titleMedium),
+                          Text(
+                            'Calendar destination',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
                           const SizedBox(height: 12),
                           if (_calendars.isNotEmpty)
                             DropdownButtonFormField<String>(
@@ -106,18 +170,26 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                                   DropdownMenuItem(
                                     value: calendar.id,
                                     child: Text(
-                                      calendar.accountName == null || calendar.accountName!.isEmpty
+                                      calendar.accountName == null ||
+                                              calendar.accountName!.isEmpty
                                           ? calendar.name
                                           : '${calendar.name} • ${calendar.accountName}',
                                     ),
                                   ),
                               ],
-                              onChanged: (value) => setState(() => _selectedCalendarId = value),
+                              onChanged: (value) =>
+                                  setState(() => _selectedCalendarId = value),
                             ),
                           const SizedBox(height: 16),
-                          Text('$workingCount working shifts are ready to add.'),
+                          Text('$workingCount working shifts are ready to sync.'),
                           const SizedBox(height: 6),
-                          const Text('Days off and leave are not added. New events currently use three reminders: 24 hours, 2 hours, and 30 minutes before shift start.'),
+                          const Text(
+                            'Days off and leave are not added. If matching ATC Schedule Manager events already exist, you will be asked whether to update them or create new copies. The choice applies to all matches in this sync.',
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Events currently use three reminders: 24 hours, 2 hours, and 30 minutes before shift start.',
+                          ),
                         ],
                       ),
                     ),
@@ -141,7 +213,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.event_available_outlined),
-                    label: Text(_syncing ? 'Adding shifts…' : 'Add Working Shifts'),
+                    label: Text(_syncing ? 'Syncing shifts…' : 'Sync Working Shifts'),
                   ),
                 ],
               ),
