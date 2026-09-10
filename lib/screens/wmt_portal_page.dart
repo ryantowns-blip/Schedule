@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -58,10 +59,20 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
         .replaceAll('\r', r'\r');
   }
 
+  String _normalizeJavaScriptString(Object? value) {
+    if (value == null) return '';
+    final text = value.toString().trim();
+    if (text.isEmpty || text.startsWith('<')) return text;
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is String) return decoded;
+    } catch (_) {}
+    return text;
+  }
+
   Future<void> _handlePageFinished() async {
     if (_finishing) return;
 
-    // First, fill the FAA/MyAccess email field when that page is visible.
     final email = _jsQuoted(widget.faaEmail);
     await _controller.runJavaScript('''
       (() => {
@@ -202,10 +213,11 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
         return;
       }
 
-      final html = await _controller.runJavaScriptReturningResult(
+      final rawHtml = await _controller.runJavaScriptReturningResult(
         'document.documentElement.outerHTML',
       );
-      _capturedPages.add(html.toString());
+      final html = _normalizeJavaScriptString(rawHtml);
+      if (html.isNotEmpty) _capturedPages.add(html);
       if (selectedValue.isNotEmpty) _capturedPeriodValues.add(selectedValue);
 
       final advanceResult = await _controller.runJavaScriptReturningResult(r'''
