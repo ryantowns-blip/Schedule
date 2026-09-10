@@ -9,6 +9,7 @@ class CalendarSyncResult {
   const CalendarSyncResult({
     required this.created,
     required this.updated,
+    required this.deleted,
     required this.skipped,
     required this.duplicates,
     required this.annualLeaveCreated,
@@ -19,6 +20,7 @@ class CalendarSyncResult {
 
   final int created;
   final int updated;
+  final int deleted;
   final int skipped;
   final int duplicates;
   final int annualLeaveCreated;
@@ -31,7 +33,8 @@ class CalendarSyncService {
   CalendarSyncService({dc.DeviceCalendar? calendar})
       : _calendar = calendar ?? dc.DeviceCalendar.instance;
 
-  static const _descriptionPrefix = 'ATC Schedule Manager';
+  static const _descriptionPrefix = 'Web Schedule Manager';
+  static const _legacyDescriptionPrefix = 'ATC Schedule Manager';
   static const _annualLeaveCalendarName = 'ATC Annual Leave';
 
   final dc.DeviceCalendar _calendar;
@@ -75,10 +78,10 @@ class CalendarSyncService {
   }) async {
     final working = workingShifts(shifts);
     final holiday = holidayLeaveShifts(shifts);
-    if (working.isEmpty && holiday.isEmpty) return 0;
+    if (!matchSameDate && working.isEmpty && holiday.isEmpty) return 0;
     final existing = await _existingAtcEvents(
       calendarId,
-      [...working, ...holiday],
+      matchSameDate ? shifts : [...working, ...holiday],
     );
     var count = 0;
     for (final entry in working) {
@@ -88,6 +91,15 @@ class CalendarSyncService {
       if (_findExistingOnDateByTitle(entry, existing, 'Holiday Leave') != null ||
           (matchSameDate && _findExistingOnDate(entry, existing) != null)) {
         count++;
+      }
+    }
+    if (matchSameDate) {
+      for (final entry in shifts) {
+        if (entry.shift.isAnnualLeave ||
+            entry.shift.shiftType == ShiftType.dayOff ||
+            entry.shift.shiftType == ShiftType.sickLeave) {
+          if (_findExistingOnDate(entry, existing) != null) count++;
+        }
       }
     }
     return count;
@@ -103,6 +115,7 @@ class CalendarSyncService {
   }) async {
     var created = 0;
     var updated = 0;
+    var deleted = 0;
     var skipped = 0;
     var duplicates = 0;
     var annualLeaveCreated = 0;
@@ -114,8 +127,36 @@ class CalendarSyncService {
     final holiday = holidayLeaveShifts(shifts);
     final existing = await _existingAtcEvents(
       calendarId,
-      [...working, ...holiday],
+      matchSameDate ? shifts : [...working, ...holiday],
     );
+
+    if (matchSameDate) {
+      for (final entry in shifts) {
+        final shift = entry.shift;
+        final shouldRemoveMainEvent = shift.isAnnualLeave ||
+            shift.shiftType == ShiftType.dayOff ||
+            shift.shiftType == ShiftType.sickLeave;
+        if (!shouldRemoveMainEvent) continue;
+        final event = _findExistingOnDate(entry, existing);
+        if (event != null) {
+          await _calendar.deleteEvent(eventId: event.instanceId);
+          deleted++;
+        }
+      }
+
+      final leaveCalendarId = await _findAnnualLeaveCalendarId();
+      if (leaveCalendarId != null) {
+        final existingLeave = await _existingAtcEvents(leaveCalendarId, shifts);
+        for (final entry in shifts) {
+          if (entry.shift.isAnnualLeave) continue;
+          final event = _findExistingOnDate(entry, existingLeave);
+          if (event != null) {
+            await _calendar.deleteEvent(eventId: event.instanceId);
+            deleted++;
+          }
+        }
+      }
+    }
 
     for (final entry in shifts) {
       final shift = entry.shift;
@@ -238,6 +279,7 @@ class CalendarSyncService {
     return CalendarSyncResult(
       created: created,
       updated: updated,
+      deleted: deleted,
       skipped: skipped,
       duplicates: duplicates,
       annualLeaveCreated: annualLeaveCreated,
@@ -252,15 +294,25 @@ class CalendarSyncService {
         .add(Duration(minutes: entry.shift.effectiveStartMinutes!));
   }
 
-  Future<String> _ensureAnnualLeaveCalendar(String colorHex) async {
+  Future<String?> _findAnnualLeaveCalendarId() async {
     final calendars = await _calendar.listCalendars();
     for (final calendar in calendars) {
       if (!calendar.readOnly && calendar.name == _annualLeaveCalendarName) {
-        if (calendar.colorHex?.toUpperCase() != colorHex.toUpperCase()) {
-          await _calendar.updateCalendar(calendar.id, colorHex: colorHex);
-        }
         return calendar.id;
       }
+    }
+    return null;
+  }
+
+  Future<String> _ensureAnnualLeaveCalendar(String colorHex) async {
+    final existingId = await _findAnnualLeaveCalendarId();
+    if (existingId != null) {
+      final calendars = await _calendar.listCalendars();
+      final calendar = calendars.firstWhere((item) => item.id == existingId);
+      if (calendar.colorHex?.toUpperCase() != colorHex.toUpperCase()) {
+        await _calendar.updateCalendar(existingId, colorHex: colorHex);
+      }
+      return existingId;
     }
     return _calendar.createCalendar(
       name: _annualLeaveCalendarName,
@@ -341,7 +393,8 @@ class CalendarSyncService {
 
   bool _looksLikeAtcManagerEvent(dc.Event event) {
     final description = event.description ?? '';
-    if (description.contains(_descriptionPrefix)) return true;
+    if (description.contains(_descriptionPrefix) ||
+        description.contains(_legacyDescriptionPrefix)) return true;
     final title = event.title.trim().toLowerCase();
     return title == 'annual leave' ||
         title == 'holiday leave' ||
