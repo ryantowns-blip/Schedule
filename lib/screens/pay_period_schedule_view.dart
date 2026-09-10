@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/schedule_display_settings.dart';
 import '../services/wmt_schedule_extractor.dart';
 
 class PayPeriodSchedule {
@@ -28,9 +29,14 @@ List<PayPeriodSchedule> buildPayPeriods(List<DatedShift> shifts) {
 }
 
 class PayPeriodScheduleView extends StatelessWidget {
-  const PayPeriodScheduleView({super.key, required this.shifts});
+  const PayPeriodScheduleView({
+    super.key,
+    required this.shifts,
+    this.displaySettings = ScheduleDisplaySettings.defaults,
+  });
 
   final List<DatedShift> shifts;
+  final ScheduleDisplaySettings displaySettings;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +61,11 @@ class PayPeriodScheduleView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           for (var i = 0; i < periods.length; i++)
-            _PeriodBody(period: periods[i], visibleIndex: i),
+            _PeriodBody(
+              period: periods[i],
+              visibleIndex: i,
+              displaySettings: displaySettings,
+            ),
         ],
       ),
     );
@@ -63,9 +73,15 @@ class PayPeriodScheduleView extends StatelessWidget {
 }
 
 class _PeriodBody extends StatefulWidget {
-  const _PeriodBody({required this.period, required this.visibleIndex});
+  const _PeriodBody({
+    required this.period,
+    required this.visibleIndex,
+    required this.displaySettings,
+  });
+
   final PayPeriodSchedule period;
   final int visibleIndex;
+  final ScheduleDisplaySettings displaySettings;
 
   @override
   State<_PeriodBody> createState() => _PeriodBodyState();
@@ -85,9 +101,19 @@ class _PeriodBodyState extends State<_PeriodBody> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _WeekRow(title: 'Week 1', start: widget.period.start, byDate: byDate),
+            _WeekRow(
+              title: 'Week 1',
+              start: widget.period.start,
+              byDate: byDate,
+              displaySettings: widget.displaySettings,
+            ),
             const SizedBox(height: 12),
-            _WeekRow(title: 'Week 2', start: widget.period.start.add(const Duration(days: 7)), byDate: byDate),
+            _WeekRow(
+              title: 'Week 2',
+              start: widget.period.start.add(const Duration(days: 7)),
+              byDate: byDate,
+              displaySettings: widget.displaySettings,
+            ),
           ],
         );
       },
@@ -96,10 +122,17 @@ class _PeriodBodyState extends State<_PeriodBody> {
 }
 
 class _WeekRow extends StatelessWidget {
-  const _WeekRow({required this.title, required this.start, required this.byDate});
+  const _WeekRow({
+    required this.title,
+    required this.start,
+    required this.byDate,
+    required this.displaySettings,
+  });
+
   final String title;
   final DateTime start;
   final Map<String, DatedShift> byDate;
+  final ScheduleDisplaySettings displaySettings;
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +153,7 @@ class _WeekRow extends StatelessWidget {
                     dayName: dayNames[i],
                     date: start.add(Duration(days: i)),
                     entry: byDate[_key(start.add(Duration(days: i)))],
+                    displaySettings: displaySettings,
                   ),
                 ),
               ),
@@ -131,10 +165,17 @@ class _WeekRow extends StatelessWidget {
 }
 
 class _DayCell extends StatelessWidget {
-  const _DayCell({required this.dayName, required this.date, this.entry});
+  const _DayCell({
+    required this.dayName,
+    required this.date,
+    required this.displaySettings,
+    this.entry,
+  });
+
   final String dayName;
   final DateTime date;
   final DatedShift? entry;
+  final ScheduleDisplaySettings displaySettings;
 
   @override
   Widget build(BuildContext context) {
@@ -154,13 +195,17 @@ class _DayCell extends StatelessWidget {
                         : shift.raw;
 
     final scheme = Theme.of(context).colorScheme;
-    final background = shift?.isOvertime == true
-        ? scheme.errorContainer
-        : shift?.isSickLeave == true
-            ? scheme.secondaryContainer
-            : shift?.isAnnualLeave == true || shift?.isDayOff == true || shift?.isHolidayLeave == true
-                ? scheme.surfaceContainerHighest
-                : null;
+    final background = shift == null
+        ? null
+        : shift.isOvertime
+            ? displaySettings.overtimeColor
+            : shift.isSickLeave
+                ? displaySettings.sickColor
+                : shift.isHolidayLeave
+                    ? displaySettings.holidayColor
+                    : shift.isAnnualLeave || shift.isDayOff
+                        ? displaySettings.offColor
+                        : displaySettings.regularColor;
 
     return Container(
       constraints: const BoxConstraints(minHeight: 86),
