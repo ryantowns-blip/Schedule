@@ -17,7 +17,7 @@ class AtcScheduleManagerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'ATC Schedule Manager',
+      title: 'Web Schedule Manager',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
@@ -144,7 +144,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ATC Schedule Manager'),
+        title: const Text('Web Schedule Manager'),
         actions: [
           IconButton(
             tooltip: 'Settings',
