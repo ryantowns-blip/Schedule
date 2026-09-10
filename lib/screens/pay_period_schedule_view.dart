@@ -149,7 +149,7 @@ class _WeekRow extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(right: i == 6 ? 0 : 3),
-                  child: _DayCell(
+                  child: _DayColumn(
                     dayName: dayNames[i],
                     date: start.add(Duration(days: i)),
                     entry: byDate[_key(start.add(Duration(days: i)))],
@@ -164,8 +164,8 @@ class _WeekRow extends StatelessWidget {
   }
 }
 
-class _DayCell extends StatelessWidget {
-  const _DayCell({
+class _DayColumn extends StatelessWidget {
+  const _DayColumn({
     required this.dayName,
     required this.date,
     required this.displaySettings,
@@ -179,9 +179,58 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shift = entry?.shift;
     final now = DateTime.now();
     final isToday = now.year == date.year && now.month == date.month && now.day == date.day;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 16,
+          child: isToday
+              ? Center(
+                  child: Text(
+                    'TODAY',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 9,
+                        ),
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(height: 2),
+        _DayCell(
+          dayName: dayName,
+          date: date,
+          entry: entry,
+          displaySettings: displaySettings,
+          isToday: isToday,
+        ),
+      ],
+    );
+  }
+}
+
+class _DayCell extends StatelessWidget {
+  const _DayCell({
+    required this.dayName,
+    required this.date,
+    required this.displaySettings,
+    required this.isToday,
+    this.entry,
+  });
+
+  final String dayName;
+  final DateTime date;
+  final DatedShift? entry;
+  final ScheduleDisplaySettings displaySettings;
+  final bool isToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final shift = entry?.shift;
     final status = shift == null
         ? '—'
         : shift.isAnnualLeave
@@ -220,15 +269,6 @@ class _DayCell extends StatelessWidget {
       ),
       child: Column(
         children: [
-          if (isToday)
-            Text(
-              'TODAY',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 9,
-                  ),
-            ),
           Text(dayName, style: Theme.of(context).textTheme.labelSmall, maxLines: 1),
           Text('${date.month}/${date.day}', style: Theme.of(context).textTheme.labelSmall, maxLines: 1),
           const SizedBox(height: 5),
