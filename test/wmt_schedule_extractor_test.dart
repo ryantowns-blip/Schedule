@@ -66,6 +66,22 @@ void main() {
     expect(shifts.singleWhere((e) => e.date.day == 9).shift.raw, 'A<1415L>');
   });
 
+  test('extracts annual leave when WebView serializes angle brackets as entities', () {
+    const html = r'''
+      <table>
+        <tr>
+          <td>Friday<br>10/09/2026<br>A&lt;1415L&gt;</td>
+          <td>Saturday<br>10/10/2026<br>A&lt;0500L&gt;</td>
+        </tr>
+      </table>
+    ''';
+
+    final shifts = extractor.extract(html);
+    expect(shifts, hasLength(2));
+    expect(shifts.every((e) => e.shift.isAnnualLeave), isTrue);
+    expect(shifts.first.shift.raw, 'A<1415L>');
+  });
+
   test('extracts dated shifts from data-date rows', () {
     const html = '''
       <div data-date="2026-09-10"><span>1400</span></div>
