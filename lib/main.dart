@@ -5,6 +5,7 @@ import 'models/schedule_display_settings.dart';
 import 'screens/calendar_sync_page.dart';
 import 'screens/pay_period_schedule_view.dart';
 import 'screens/settings_page.dart';
+import 'screens/upcoming_leave_page.dart';
 import 'screens/update_schedule_page.dart';
 import 'services/wmt_schedule_extractor.dart';
 
@@ -192,6 +193,14 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     setState(() => _displaySettings = result);
   }
 
+  Future<void> _openUpcomingLeave() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => UpcomingLeavePage(displaySettings: _displaySettings),
+      ),
+    );
+  }
+
   Future<void> _openCalendarSync() async {
     if (_shifts.isEmpty) return;
     await Navigator.of(context).push<void>(
@@ -231,6 +240,11 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       appBar: AppBar(
         title: const Text('Web Schedule Manager'),
         actions: [
+          IconButton(
+            tooltip: 'Upcoming Leave',
+            onPressed: _openUpcomingLeave,
+            icon: const Icon(Icons.beach_access_outlined),
+          ),
           IconButton(
             tooltip: 'Settings',
             onPressed: _openSettings,
@@ -298,6 +312,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       onPressed: _updateSchedule,
                       icon: const Icon(Icons.sync),
                       label: const Text('Update Schedule'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _openUpcomingLeave,
+                      icon: const Icon(Icons.beach_access_outlined),
+                      label: const Text('Upcoming Leave'),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
@@ -392,6 +412,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       onPressed: _updateSchedule,
                       icon: const Icon(Icons.sync),
                       label: const Text('Get Schedule'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _openUpcomingLeave,
+                      icon: const Icon(Icons.beach_access_outlined),
+                      label: const Text('Upcoming Leave'),
                     ),
                   ],
                 ],
