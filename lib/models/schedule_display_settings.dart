@@ -6,6 +6,7 @@ class ScheduleDisplaySettings {
     required this.regularColor,
     required this.overtimeColor,
     required this.offColor,
+    required this.annualLeaveColor,
     required this.sickColor,
     required this.holidayColor,
   });
@@ -13,6 +14,7 @@ class ScheduleDisplaySettings {
   final Color? regularColor;
   final Color? overtimeColor;
   final Color? offColor;
+  final Color? annualLeaveColor;
   final Color? sickColor;
   final Color? holidayColor;
 
@@ -20,6 +22,7 @@ class ScheduleDisplaySettings {
     regularColor: null,
     overtimeColor: Color(0xFFFFDAD6),
     offColor: Color(0xFFE2E2E6),
+    annualLeaveColor: Color(0xFFD8F3DC),
     sickColor: Color(0xFFE8DEF8),
     holidayColor: Color(0xFFE2E2E6),
   );
@@ -27,6 +30,7 @@ class ScheduleDisplaySettings {
   static const _regularKey = 'display_regular_color';
   static const _overtimeKey = 'display_overtime_color';
   static const _offKey = 'display_off_color';
+  static const _annualLeaveKey = 'display_annual_leave_color';
   static const _sickKey = 'display_sick_color';
   static const _holidayKey = 'display_holiday_color';
   static const _none = -1;
@@ -44,6 +48,7 @@ class ScheduleDisplaySettings {
       regularColor: read(_regularKey, defaults.regularColor),
       overtimeColor: read(_overtimeKey, defaults.overtimeColor),
       offColor: read(_offKey, defaults.offColor),
+      annualLeaveColor: read(_annualLeaveKey, defaults.annualLeaveColor),
       sickColor: read(_sickKey, defaults.sickColor),
       holidayColor: read(_holidayKey, defaults.holidayColor),
     );
@@ -54,6 +59,7 @@ class ScheduleDisplaySettings {
     await prefs.setInt(_regularKey, regularColor?.value ?? _none);
     await prefs.setInt(_overtimeKey, overtimeColor?.value ?? _none);
     await prefs.setInt(_offKey, offColor?.value ?? _none);
+    await prefs.setInt(_annualLeaveKey, annualLeaveColor?.value ?? _none);
     await prefs.setInt(_sickKey, sickColor?.value ?? _none);
     await prefs.setInt(_holidayKey, holidayColor?.value ?? _none);
   }
@@ -65,6 +71,8 @@ class ScheduleDisplaySettings {
     bool clearOvertime = false,
     Color? offColor,
     bool clearOff = false,
+    Color? annualLeaveColor,
+    bool clearAnnualLeave = false,
     Color? sickColor,
     bool clearSick = false,
     Color? holidayColor,
@@ -74,6 +82,7 @@ class ScheduleDisplaySettings {
       regularColor: clearRegular ? null : regularColor ?? this.regularColor,
       overtimeColor: clearOvertime ? null : overtimeColor ?? this.overtimeColor,
       offColor: clearOff ? null : offColor ?? this.offColor,
+      annualLeaveColor: clearAnnualLeave ? null : annualLeaveColor ?? this.annualLeaveColor,
       sickColor: clearSick ? null : sickColor ?? this.sickColor,
       holidayColor: clearHoliday ? null : holidayColor ?? this.holidayColor,
     );
