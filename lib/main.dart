@@ -4,6 +4,7 @@ import 'models/parsed_shift.dart';
 import 'screens/wmt_portal_page.dart';
 import 'services/schedule_parser.dart';
 import 'services/wmt_auth_service.dart';
+import 'services/wmt_schedule_extractor.dart';
 
 const _wmtLoginUrl = 'https://wmtscheduler.faa.gov/WMT_LogOn/';
 
@@ -40,8 +41,11 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
   final _emailController = TextEditingController();
   final _parser = const ScheduleParser();
   final _auth = WmtAuthService();
+  final _extractor = const WmtScheduleExtractor();
   List<ParsedShift> _results = const [];
+  List<DatedShift> _wmtShifts = const [];
   String? _error;
+  String? _wmtError;
   String? _capturedWmtHtml;
 
   @override
@@ -88,8 +92,14 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     );
 
     if (!mounted || html == null || html.isEmpty) return;
+
+    final extracted = _extractor.extract(html);
     setState(() {
       _capturedWmtHtml = html;
+      _wmtShifts = extracted;
+      _wmtError = extracted.isEmpty
+          ? 'WMT page captured, but no dated shifts were recognized yet.'
+          : null;
       _auth.authenticationSucceeded();
     });
   }
@@ -98,6 +108,8 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     _emailController.clear();
     setState(() {
       _capturedWmtHtml = null;
+      _wmtShifts = const [];
+      _wmtError = null;
       _auth.signOut();
     });
   }
@@ -109,6 +121,10 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
     final minute = normalized % 60;
     final nextDay = minutes >= 1440 ? ' +1d' : '';
     return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}$nextDay';
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.month}/${date.day}/${date.year}';
   }
 
   Widget _buildWmtCard() {
@@ -175,6 +191,36 @@ class _ScheduleParserPageState extends State<ScheduleParserPage> {
                       : '${state.email ?? 'FAA account'} • page captured',
                 ),
               ),
+              if (_wmtError != null) ...[
+                Text(
+                  _wmtError!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (_wmtShifts.isNotEmpty) ...[
+                Text(
+                  'Review imported schedule (${_wmtShifts.length} shifts)',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                ..._wmtShifts.map(
+                  (entry) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(entry.shift.isDayOff
+                        ? Icons.event_busy
+                        : entry.shift.isOvertime
+                            ? Icons.attach_money
+                            : Icons.access_time),
+                    title: Text('${_formatDate(entry.date)} • ${entry.shift.raw}'),
+                    subtitle: entry.shift.isDayOff
+                        ? const Text('Day off')
+                        : Text(
+                            '${entry.shift.label}\n${_formatMinutes(entry.shift.effectiveStartMinutes)} → ${_formatMinutes(entry.shift.effectiveEndMinutes)}',
+                          ),
+                  ),
+                ),
+              ],
               OutlinedButton(onPressed: _signOut, child: const Text('Disconnect')),
             ],
           ],
