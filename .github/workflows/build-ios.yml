@@ -1,0 +1,53 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'v0.8.0-ios'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS project if missing
+        run: |
+          if [ ! -d ios ]; then
+            flutter create --platforms=ios --project-name atc_schedule_manager .
+          fi
+
+      - name: Configure iOS app metadata and calendar permissions
+        run: |
+          PLIST=ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Web Schedule Manager" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 'Web Schedule Manager'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSCalendarsUsageDescription Web Schedule Manager needs calendar access to add and update your work schedule." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCalendarsUsageDescription string 'Web Schedule Manager needs calendar access to add and update your work schedule.'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSCalendarsFullAccessUsageDescription Web Schedule Manager needs full calendar access to create, update, and remove schedule events." "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCalendarsFullAccessUsageDescription string 'Web Schedule Manager needs full calendar access to create, update, and remove schedule events.'" "$PLIST"
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --debug --no-codesign
+
+      - name: Package unsigned app
+        run: |
+          cd build/ios/iphoneos
+          zip -r Web-Schedule-Manager-iOS-unsigned.zip Runner.app
+
+      - name: Upload unsigned iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-schedule-manager-ios-unsigned
+          path: build/ios/iphoneos/Web-Schedule-Manager-iOS-unsigned.zip
