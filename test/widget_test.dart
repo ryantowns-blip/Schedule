@@ -8,12 +8,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('ATC Schedule Manager opens to saved schedule home',
+  testWidgets('Web Schedule Manager opens to saved schedule home',
       (WidgetTester tester) async {
     await tester.pumpWidget(const AtcScheduleManagerApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('ATC Schedule Manager'), findsOneWidget);
+    expect(find.text('Web Schedule Manager'), findsOneWidget);
     expect(find.text('No saved schedule yet'), findsOneWidget);
     expect(find.text('Get Schedule'), findsOneWidget);
   });
