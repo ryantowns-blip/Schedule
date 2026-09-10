@@ -1,7 +1,7 @@
 name: atc_schedule_manager
-description: ATC Schedule Manager for parsing WMT Scheduler shifts and preparing calendar events.
+description: Web Schedule Manager for importing WMT Scheduler shifts and syncing them to device calendars.
 publish_to: 'none'
-version: 0.7.0+7
+version: 0.8.0+8
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
