@@ -26,6 +26,8 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
   bool _collectingPayPeriods = false;
   final List<String> _capturedPages = <String>[];
   final Set<String> _capturedPeriodValues = <String>{};
+  final List<String> _expectedPeriodValues = <String>[];
+  int _noProgressRetries = 0;
   String? _lastAutomationUrl;
 
   @override
@@ -40,9 +42,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           },
           onPageFinished: (_) => _handlePageFinished(),
           onWebResourceError: (error) {
-            if (error.description.toUpperCase().contains('ERR_BLOCKED_BY_ORB')) {
-              return;
-            }
+            if (error.description.toUpperCase().contains('ERR_BLOCKED_BY_ORB')) return;
             if (error.isForMainFrame == false) return;
             if (mounted) setState(() => _error = error.description);
           },
@@ -51,13 +51,11 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       ..loadRequest(Uri.parse(widget.startUrl));
   }
 
-  String _jsQuoted(String value) {
-    return value
-        .replaceAll(r'\', r'\\')
-        .replaceAll("'", r"\'")
-        .replaceAll('\n', r'\n')
-        .replaceAll('\r', r'\r');
-  }
+  String _jsQuoted(String value) => value
+      .replaceAll(r'\', r'\\')
+      .replaceAll("'", r"\'")
+      .replaceAll('\n', r'\n')
+      .replaceAll('\r', r'\r');
 
   String _normalizeJavaScriptString(Object? value) {
     if (value == null) return '';
@@ -84,8 +82,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
             .filter(Boolean).join(' ').toLowerCase();
           return i.type === 'email' || /email|user|login|username|identifier/.test(haystack);
         });
-        if (!candidate) return;
-        if ((candidate.value || '').trim() === email) return;
+        if (!candidate || (candidate.value || '').trim() === email) return;
         candidate.focus();
         candidate.value = email;
         candidate.dispatchEvent(new Event('input', {bubbles:true}));
@@ -100,7 +97,6 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
         const hasSchedule = /Individual schedule/i.test(text);
         const hasPayPeriod = /Select Pay Period/i.test(text) && document.querySelector('select');
         if (hasSchedule && hasPayPeriod) return 'schedule';
-
         const hasWmtBrand = /WMT Scheduler/i.test(text) || /WMT Scheduler/i.test(title);
         const hasViews = Array.from(document.querySelectorAll('a,button,input,[onclick],td,span'))
           .some(el => /^views$/i.test(((el.innerText || el.value || el.textContent || '') + '').trim()));
@@ -111,17 +107,15 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
 
     final kind = pageKind.toString().replaceAll('"', '');
     if (kind == 'schedule') {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await Future<void>.delayed(const Duration(milliseconds: 700));
       await _captureScheduleAndAdvance();
       return;
     }
 
     if (kind != 'wmt-home') return;
-
     final currentUrl = await _controller.currentUrl();
     if (currentUrl != null && currentUrl == _lastAutomationUrl) return;
     _lastAutomationUrl = currentUrl;
-
     await _openMyScheduleFromHome();
   }
 
@@ -133,14 +127,11 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
         const all = () => Array.from(document.querySelectorAll(
           'a, button, input, td, span, div, [role="button"], [role="menuitem"], [onclick]'
         ));
-
         const direct = all().find(el => /^my\s*schedule$/i.test(textOf(el)));
         if (direct) {
-          if (direct.href) window.location.href = direct.href;
-          else direct.click();
+          if (direct.href) window.location.href = direct.href; else direct.click();
           return 'direct';
         }
-
         const scheduleLink = Array.from(document.querySelectorAll('a')).find(a => {
           const t = textOf(a);
           const href = (a.getAttribute('href') || '').toLowerCase();
@@ -150,34 +141,59 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           window.location.href = scheduleLink.href;
           return 'href';
         }
-
         const views = all().find(el => /^views$/i.test(textOf(el)));
         if (!views) return 'no-views';
-
         for (const type of ['mouseover','mouseenter','pointerover']) {
           try { views.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, view:window})); } catch (_) {}
         }
         try { views.click(); } catch (_) {}
-
         setTimeout(() => {
           const mine = all().find(el => /^my\s*schedule$/i.test(textOf(el)));
           if (mine) {
-            if (mine.href) window.location.href = mine.href;
-            else mine.click();
+            if (mine.href) window.location.href = mine.href; else mine.click();
             return;
           }
-          const anchors = Array.from(document.querySelectorAll('a'));
-          const fallback = anchors.find(a => /my\s*schedule/i.test(textOf(a)) || /myschedule|my_schedule/i.test(a.href || ''));
+          const fallback = Array.from(document.querySelectorAll('a')).find(a =>
+            /my\s*schedule/i.test(textOf(a)) || /myschedule|my_schedule/i.test(a.href || ''));
           if (fallback) window.location.href = fallback.href;
         }, 500);
         return 'views';
       })();
     ''');
 
-    final value = result.toString().replaceAll('"', '');
-    if (value == 'no-views' && mounted) {
+    if (result.toString().replaceAll('"', '') == 'no-views' && mounted) {
       setState(() => _error = 'WMT loaded, but the Views menu could not be found automatically.');
     }
+  }
+
+  Future<Map<String, dynamic>?> _readPayPeriodMetadata() async {
+    final raw = await _controller.runJavaScriptReturningResult(r'''
+      (() => {
+        const selects = Array.from(document.querySelectorAll('select'));
+        const select = selects.find(s => {
+          const nearby = ((s.parentElement?.innerText || '') + ' ' +
+            (s.previousElementSibling?.textContent || '')).replace(/\s+/g, ' ');
+          return /pay\s*period/i.test(nearby) ||
+            Array.from(s.options || []).some(o => /^\d{6}$/.test((o.value || o.text || '').trim()));
+        });
+        if (!select) return JSON.stringify({found:false});
+        return JSON.stringify({
+          found:true,
+          selectedIndex:select.selectedIndex,
+          selectedValue:(select.value || select.options[select.selectedIndex]?.text || '').trim(),
+          options:Array.from(select.options || []).map(o => ({
+            value:(o.value || o.text || '').trim(),
+            text:(o.text || '').trim()
+          }))
+        });
+      })();
+    ''');
+
+    final text = _normalizeJavaScriptString(raw);
+    final decoded = jsonDecode(text);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    return null;
   }
 
   Future<void> _captureScheduleAndAdvance() async {
@@ -185,72 +201,105 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
     _collectingPayPeriods = true;
 
     try {
-      final metadata = await _controller.runJavaScriptReturningResult(r'''
-        (() => {
-          const selects = Array.from(document.querySelectorAll('select'));
-          const select = selects.find(s => {
-            const nearby = ((s.parentElement?.innerText || '') + ' ' +
-              (s.previousElementSibling?.textContent || '')).replace(/\s+/g, ' ');
-            return /pay\s*period/i.test(nearby) ||
-              Array.from(s.options || []).some(o => /^\d{6}$/.test((o.value || o.text || '').trim()));
-          });
-          if (!select) return JSON.stringify({found:false});
-          return JSON.stringify({
-            found:true,
-            selectedIndex:select.selectedIndex,
-            selectedValue:(select.value || '').trim(),
-            optionCount:select.options.length
-          });
-        })();
-      ''');
+      final metadata = await _readPayPeriodMetadata();
+      if (metadata == null || metadata['found'] != true) {
+        _collectingPayPeriods = false;
+        if (_capturedPages.isNotEmpty) await _finishWithCapturedPages();
+        return;
+      }
 
-      final metaText = metadata.toString().replaceAll(r'\"', '"');
-      final selectedMatch = RegExp(r'"selectedValue":"([^"]*)"').firstMatch(metaText);
-      final selectedValue = selectedMatch?.group(1) ?? '';
+      final options = (metadata['options'] as List? ?? const [])
+          .map((item) {
+            if (item is! Map) return '';
+            final value = (item['value'] ?? '').toString().trim();
+            final text = (item['text'] ?? '').toString().trim();
+            return value.isNotEmpty ? value : text;
+          })
+          .where((value) => value.isNotEmpty)
+          .toList();
 
-      if (selectedValue.isNotEmpty && _capturedPeriodValues.contains(selectedValue)) {
+      if (_expectedPeriodValues.isEmpty) {
+        _expectedPeriodValues.addAll(options);
+      } else {
+        for (final value in options) {
+          if (!_expectedPeriodValues.contains(value)) _expectedPeriodValues.add(value);
+        }
+      }
+
+      final selectedValue = (metadata['selectedValue'] ?? '').toString().trim();
+      if (selectedValue.isNotEmpty && !_capturedPeriodValues.contains(selectedValue)) {
+        final rawHtml = await _controller.runJavaScriptReturningResult('document.documentElement.outerHTML');
+        final html = _normalizeJavaScriptString(rawHtml);
+        if (html.isNotEmpty) {
+          _capturedPages.add(html);
+          _capturedPeriodValues.add(selectedValue);
+          _noProgressRetries = 0;
+        }
+      }
+
+      String? nextValue;
+      for (final value in _expectedPeriodValues) {
+        if (!_capturedPeriodValues.contains(value)) {
+          nextValue = value;
+          break;
+        }
+      }
+
+      if (nextValue == null) {
+        _collectingPayPeriods = false;
         await _finishWithCapturedPages();
         return;
       }
 
-      final rawHtml = await _controller.runJavaScriptReturningResult(
-        'document.documentElement.outerHTML',
-      );
-      final html = _normalizeJavaScriptString(rawHtml);
-      if (html.isNotEmpty) _capturedPages.add(html);
-      if (selectedValue.isNotEmpty) _capturedPeriodValues.add(selectedValue);
-
-      final advanceResult = await _controller.runJavaScriptReturningResult(r'''
+      final jsNextValue = _jsQuoted(nextValue);
+      final advanceRaw = await _controller.runJavaScriptReturningResult('''
         (() => {
+          const targetValue = '$jsNextValue';
           const selects = Array.from(document.querySelectorAll('select'));
           const select = selects.find(s => {
             const nearby = ((s.parentElement?.innerText || '') + ' ' +
-              (s.previousElementSibling?.textContent || '')).replace(/\s+/g, ' ');
-            return /pay\s*period/i.test(nearby) ||
-              Array.from(s.options || []).some(o => /^\d{6}$/.test((o.value || o.text || '').trim()));
+              (s.previousElementSibling?.textContent || '')).replace(/\\s+/g, ' ');
+            return /pay\\s*period/i.test(nearby) ||
+              Array.from(s.options || []).some(o => /^\\d{6}\$/.test((o.value || o.text || '').trim()));
           });
           if (!select) return 'no-select';
-          const nextIndex = select.selectedIndex + 1;
-          if (nextIndex >= select.options.length) return 'done';
-
-          select.selectedIndex = nextIndex;
-          const nextValue = (select.options[nextIndex].value || select.options[nextIndex].text || '').trim();
+          const option = Array.from(select.options || []).find(o =>
+            ((o.value || o.text || '').trim() === targetValue));
+          if (!option) return 'no-option';
+          select.value = option.value;
+          if (select.value !== option.value) select.selectedIndex = option.index;
+          select.dispatchEvent(new Event('input', {bubbles:true}));
           select.dispatchEvent(new Event('change', {bubbles:true}));
-          if (typeof select.onchange === 'function') {
-            try { select.onchange(); } catch (_) {}
-          }
-          return 'advanced:' + nextValue;
+          try {
+            if (typeof select.onchange === 'function') select.onchange();
+          } catch (_) {}
+          setTimeout(() => {
+            const parent = select.parentElement || document;
+            const controls = Array.from(parent.querySelectorAll('button,input[type="submit"],input[type="button"],a'));
+            const go = controls.find(el => /^(go|view|submit|select)$/i.test(
+              ((el.innerText || el.value || el.textContent || '') + '').trim()));
+            if (go) { try { go.click(); } catch (_) {} }
+          }, 150);
+          return 'advanced:' + targetValue;
         })();
       ''');
 
-      final value = advanceResult.toString().replaceAll('"', '');
-      if (value == 'done' || value == 'no-select') {
-        await _finishWithCapturedPages();
-        return;
+      final advance = advanceRaw.toString().replaceAll('"', '');
+      _collectingPayPeriods = false;
+
+      if (advance == 'no-select' || advance == 'no-option') {
+        _noProgressRetries++;
+        if (_noProgressRetries >= 5) {
+          if (mounted) {
+            setState(() => _error =
+                'WMT offered ${_expectedPeriodValues.length} pay periods, but only ${_capturedPeriodValues.length} could be loaded.');
+          }
+          await _finishWithCapturedPages();
+          return;
+        }
       }
 
-      _collectingPayPeriods = false;
-      Future<void>.delayed(const Duration(seconds: 2), () async {
+      Future<void>.delayed(const Duration(seconds: 3), () async {
         if (!mounted || _finishing || _collectingPayPeriods) return;
         await _captureScheduleAndAdvance();
       });
@@ -287,7 +336,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Text(
-              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then try to open My Schedule and collect the selected and future pay periods automatically. Your password stays inside the FAA page and is not stored by the app.',
+              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then try to open My Schedule and collect every available pay period automatically. Your password stays inside the FAA page and is not stored by the app.',
             ),
           ),
           Expanded(child: WebViewWidget(controller: _controller)),
