@@ -1,24 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:atc_schedule_manager/main.dart';
 
 void main() {
-  testWidgets('ATC Schedule Manager launches', (WidgetTester tester) async {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('ATC Schedule Manager opens to saved schedule home',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const AtcScheduleManagerApp());
     await tester.pumpAndSettle();
 
     expect(find.text('ATC Schedule Manager'), findsOneWidget);
-    expect(find.text('WMT Scheduler'), findsOneWidget);
-    expect(find.text('Connect to WMT'), findsOneWidget);
-    // The old manual "Parse schedule" control was intentionally removed in
-    // v0.4.0. WMT capture now feeds the pay-period schedule viewer directly.
-    expect(find.text('Parse schedule'), findsNothing);
+    expect(find.text('No saved schedule yet'), findsOneWidget);
+    expect(find.text('Get Schedule'), findsOneWidget);
   });
 
-  testWidgets('WMT login advances from email to MyAccess password step',
+  testWidgets('Update Schedule screen starts WMT login flow',
       (WidgetTester tester) async {
     await tester.pumpWidget(const AtcScheduleManagerApp());
     await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Get Schedule'));
+    await tester.pumpAndSettle();
+    expect(find.text('Update Schedule'), findsOneWidget);
+    expect(find.text('Connect to WMT'), findsOneWidget);
 
     await tester.tap(find.text('Connect to WMT'));
     await tester.pumpAndSettle();
