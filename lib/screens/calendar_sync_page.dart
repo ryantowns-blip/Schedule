@@ -10,10 +10,12 @@ class CalendarSyncPage extends StatefulWidget {
     super.key,
     required this.shifts,
     required this.displaySettings,
+    this.changeUpdateMode = false,
   });
 
   final List<DatedShift> shifts;
   final ScheduleDisplaySettings displaySettings;
+  final bool changeUpdateMode;
 
   @override
   State<CalendarSyncPage> createState() => _CalendarSyncPageState();
@@ -74,7 +76,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Existing shifts found'),
-        content: Text('$count matching ATC Schedule Manager calendar entr${count == 1 ? 'y' : 'ies'} already exist. What should the app do with matches?'),
+        content: Text('$count matching Web Schedule Manager calendar entr${count == 1 ? 'y' : 'ies'} already exist. What should the app do with matches?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -106,9 +108,10 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       final matches = await _service.countExistingMatches(
         calendarId: calendarId,
         shifts: widget.shifts,
+        matchSameDate: widget.changeUpdateMode,
       );
       var handling = DuplicateHandling.updateExisting;
-      if (matches > 0) {
+      if (!widget.changeUpdateMode && matches > 0) {
         if (!mounted) return;
         final choice = await _askDuplicateHandling(matches);
         if (choice == null) {
@@ -124,13 +127,16 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         duplicateHandling: handling,
         reminders: _selectedReminders,
         annualLeaveColorHex: _annualLeaveColorHex(),
+        matchSameDate: widget.changeUpdateMode,
       );
       if (!mounted) return;
       final leaveTotal = result.annualLeaveCreated + result.annualLeaveUpdated;
       final holidayTotal = result.holidayLeaveCreated + result.holidayLeaveUpdated;
       setState(() {
         _syncing = false;
-        _message = 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.';
+        _message = widget.changeUpdateMode
+            ? 'Calendar changes applied: ${result.updated} shift${result.updated == 1 ? '' : 's'} updated${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.'
+            : 'Calendar sync complete: ${result.created} shifts added, ${result.updated} updated${leaveTotal > 0 ? ', $leaveTotal Annual Leave entr${leaveTotal == 1 ? 'y' : 'ies'} synced' : ''}${holidayTotal > 0 ? ', and $holidayTotal Holiday Leave entr${holidayTotal == 1 ? 'y' : 'ies'} synced' : ''}.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -148,13 +154,34 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     final holidayCount = _service.holidayLeaveShifts(widget.shifts).length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Add to Calendar')),
+      appBar: AppBar(title: Text(widget.changeUpdateMode ? 'Update Calendar Changes' : 'Add to Calendar')),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  if (widget.changeUpdateMode) ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.sync_problem_outlined),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Only the dates with detected schedule changes are shown here. Existing Web Schedule Manager events on those dates will be updated instead of duplicated.',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -253,7 +280,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.event_available_outlined),
-                    label: Text(_syncing ? 'Syncing…' : 'Sync Schedule'),
+                    label: Text(_syncing ? 'Syncing…' : widget.changeUpdateMode ? 'Update Changed Entries' : 'Sync Schedule'),
                   ),
                 ],
               ),
