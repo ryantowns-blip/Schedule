@@ -21,6 +21,20 @@ class ScheduleParser {
       );
     }
 
+    if (normalized == 'SL') {
+      return ParsedShift(
+        raw: raw,
+        startMinutes: null,
+        baseDurationMinutes: 0,
+        shiftType: ShiftType.sickLeave,
+        flexType: FlexType.none,
+        isSupervisor: false,
+        isCic: false,
+        overtimeBeforeMinutes: 0,
+        overtimeAfterMinutes: 0,
+      );
+    }
+
     final isOvertime = normalized.contains(r'$');
     final isSupervisor = normalized.contains('S');
     final isCic = normalized.contains('C');
