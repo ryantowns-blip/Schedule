@@ -10,12 +10,16 @@ class CalendarSyncResult {
     required this.updated,
     required this.skipped,
     required this.duplicates,
+    required this.annualLeaveCreated,
+    required this.annualLeaveUpdated,
   });
 
   final int created;
   final int updated;
   final int skipped;
   final int duplicates;
+  final int annualLeaveCreated;
+  final int annualLeaveUpdated;
 }
 
 class CalendarSyncService {
@@ -23,11 +27,7 @@ class CalendarSyncService {
       : _calendar = calendar ?? dc.DeviceCalendar.instance;
 
   static const _descriptionPrefix = 'ATC Schedule Manager';
-  static const _defaultReminders = <Duration>[
-    Duration(days: 1),
-    Duration(hours: 2),
-    Duration(minutes: 30),
-  ];
+  static const _annualLeaveCalendarName = 'ATC Annual Leave';
 
   final dc.DeviceCalendar _calendar;
 
@@ -53,6 +53,12 @@ class CalendarSyncService {
           entry.shift.effectiveStartMinutes != null)
       .toList();
 
+  List<DatedShift> annualLeaveShifts(List<DatedShift> shifts) => shifts
+      .where((entry) =>
+          entry.shift.isAnnualLeave &&
+          entry.shift.effectiveStartMinutes != null)
+      .toList();
+
   Future<int> countExistingMatches({
     required String calendarId,
     required List<DatedShift> shifts,
@@ -67,15 +73,19 @@ class CalendarSyncService {
     return count;
   }
 
-  Future<CalendarSyncResult> syncWorkingShiftEvents({
+  Future<CalendarSyncResult> syncShiftEvents({
     required String calendarId,
     required List<DatedShift> shifts,
     required DuplicateHandling duplicateHandling,
+    required List<Duration> reminders,
+    required String annualLeaveColorHex,
   }) async {
     var created = 0;
     var updated = 0;
     var skipped = 0;
     var duplicates = 0;
+    var annualLeaveCreated = 0;
+    var annualLeaveUpdated = 0;
 
     final working = workingShifts(shifts);
     final existing = await _existingAtcEvents(calendarId, working);
@@ -83,13 +93,13 @@ class CalendarSyncService {
     for (final entry in shifts) {
       final shift = entry.shift;
       final startMinutes = shift.effectiveStartMinutes;
+      if (shift.isAnnualLeave) continue;
       if (shift.isNonWorking || startMinutes == null) {
         skipped++;
         continue;
       }
 
-      final start = DateTime(entry.date.year, entry.date.month, entry.date.day)
-          .add(Duration(minutes: startMinutes));
+      final start = _startFor(entry);
       final end = start.add(Duration(minutes: shift.durationMinutes));
       final description = '$_descriptionPrefix • WMT code: ${shift.raw}';
       final match = _findExistingFor(entry, existing);
@@ -99,11 +109,11 @@ class CalendarSyncService {
         if (duplicateHandling == DuplicateHandling.updateExisting) {
           await _calendar.updateEvent(
             eventId: match.instanceId,
-            title: _titleFor(entry),
+            title: shift.raw,
             startDate: start,
             endDate: end,
             description: dc.Patch.set(description),
-            reminders: const dc.Patch.set(_defaultReminders),
+            reminders: dc.Patch.set(reminders),
           );
           updated++;
           continue;
@@ -112,13 +122,48 @@ class CalendarSyncService {
 
       await _calendar.createEvent(
         calendarId: calendarId,
-        title: _titleFor(entry),
+        title: shift.raw,
         startDate: start,
         endDate: end,
         description: description,
-        reminders: _defaultReminders,
+        reminders: reminders,
       );
       created++;
+    }
+
+    final leave = annualLeaveShifts(shifts);
+    if (leave.isNotEmpty) {
+      final leaveCalendarId = await _ensureAnnualLeaveCalendar(annualLeaveColorHex);
+      final existingLeave = await _existingAtcEvents(leaveCalendarId, leave);
+      for (final entry in leave) {
+        final shift = entry.shift;
+        final start = _startFor(entry);
+        final end = start.add(Duration(minutes: shift.durationMinutes));
+        final description = '$_descriptionPrefix • Annual Leave • WMT code: ${shift.raw}';
+        final match = _findExistingFor(entry, existingLeave);
+
+        if (match != null && duplicateHandling == DuplicateHandling.updateExisting) {
+          await _calendar.updateEvent(
+            eventId: match.instanceId,
+            title: 'Annual Leave',
+            startDate: start,
+            endDate: end,
+            description: dc.Patch.set(description),
+            reminders: dc.Patch.set(reminders),
+          );
+          annualLeaveUpdated++;
+        } else {
+          await _calendar.createEvent(
+            calendarId: leaveCalendarId,
+            title: 'Annual Leave',
+            startDate: start,
+            endDate: end,
+            description: description,
+            reminders: reminders,
+          );
+          annualLeaveCreated++;
+        }
+      }
     }
 
     return CalendarSyncResult(
@@ -126,6 +171,29 @@ class CalendarSyncService {
       updated: updated,
       skipped: skipped,
       duplicates: duplicates,
+      annualLeaveCreated: annualLeaveCreated,
+      annualLeaveUpdated: annualLeaveUpdated,
+    );
+  }
+
+  DateTime _startFor(DatedShift entry) {
+    return DateTime(entry.date.year, entry.date.month, entry.date.day)
+        .add(Duration(minutes: entry.shift.effectiveStartMinutes!));
+  }
+
+  Future<String> _ensureAnnualLeaveCalendar(String colorHex) async {
+    final calendars = await _calendar.listCalendars();
+    for (final calendar in calendars) {
+      if (!calendar.readOnly && calendar.name == _annualLeaveCalendarName) {
+        if (calendar.colorHex?.toUpperCase() != colorHex.toUpperCase()) {
+          await _calendar.updateCalendar(calendar.id, colorHex: colorHex);
+        }
+        return calendar.id;
+      }
+    }
+    return _calendar.createCalendar(
+      name: _annualLeaveCalendarName,
+      colorHex: colorHex,
     );
   }
 
@@ -171,17 +239,8 @@ class CalendarSyncService {
     final description = event.description ?? '';
     if (description.contains(_descriptionPrefix)) return true;
     final title = event.title.trim().toLowerCase();
-    return title == 'atc shift' ||
-        title == 'atc supervisor' ||
-        title == 'atc cic' ||
-        title == r'$ ot';
-  }
-
-  String _titleFor(DatedShift entry) {
-    final shift = entry.shift;
-    if (shift.isOvertime) return r'$ OT';
-    if (shift.isSupervisor) return 'ATC Supervisor';
-    if (shift.isCic) return 'ATC CIC';
-    return 'ATC Shift';
+    return title == 'annual leave' ||
+        RegExp(r'^[a-z$]*(?:xtra)?\d{3,4}[a-z$]*(?:xtra)?$', caseSensitive: false)
+            .hasMatch(event.title.trim());
   }
 }
