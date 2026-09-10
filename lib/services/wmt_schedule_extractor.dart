@@ -89,10 +89,19 @@ class WmtScheduleExtractor {
   }
 
   ParsedShift? _tryParseShift(String raw) {
-    final token = raw.trim().replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+    var token = raw.trim();
+    if (token.isEmpty) return null;
+
+    final annualMatch = RegExp(r'A<[^>]+>', caseSensitive: false).firstMatch(token);
+    if (annualMatch != null) {
+      token = annualMatch.group(0)!;
+    } else {
+      token = token.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+    }
+
     if (token.isEmpty) return null;
     if (!RegExp(
-      r'^(?:X|SL|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
       caseSensitive: false,
     ).hasMatch(token)) return null;
     try {
