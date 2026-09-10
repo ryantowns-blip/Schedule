@@ -10,7 +10,9 @@ void main() {
     expect(find.text('ATC Schedule Manager'), findsOneWidget);
     expect(find.text('WMT Scheduler'), findsOneWidget);
     expect(find.text('Connect to WMT'), findsOneWidget);
-    expect(find.text('Parse schedule'), findsOneWidget);
+    // The old manual "Parse schedule" control was intentionally removed in
+    // v0.4.0. WMT capture now feeds the pay-period schedule viewer directly.
+    expect(find.text('Parse schedule'), findsNothing);
   });
 
   testWidgets('WMT login advances from email to MyAccess password step',
