@@ -28,6 +28,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
   final Set<String> _capturedPeriodValues = <String>{};
   final List<String> _expectedPeriodValues = <String>[];
   int _noProgressRetries = 0;
+  String? _pendingPeriodValue;
   String? _lastAutomationUrl;
 
   @override
@@ -107,7 +108,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
 
     final kind = pageKind.toString().replaceAll('"', '');
     if (kind == 'schedule') {
-      await Future<void>.delayed(const Duration(milliseconds: 700));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
       await _captureScheduleAndAdvance();
       return;
     }
@@ -196,6 +197,22 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
     return null;
   }
 
+  Future<void> _retryCollection() async {
+    _collectingPayPeriods = false;
+    _noProgressRetries++;
+    if (_noProgressRetries >= 8) {
+      if (mounted) {
+        setState(() => _error =
+            'WMT offered ${_expectedPeriodValues.length} current/future pay periods, but only ${_capturedPeriodValues.length} could be verified.');
+      }
+      return;
+    }
+    Future<void>.delayed(const Duration(seconds: 2), () async {
+      if (!mounted || _finishing || _collectingPayPeriods) return;
+      await _captureScheduleAndAdvance();
+    });
+  }
+
   Future<void> _captureScheduleAndAdvance() async {
     if (_finishing || _collectingPayPeriods) return;
     _collectingPayPeriods = true;
@@ -203,8 +220,9 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
     try {
       final metadata = await _readPayPeriodMetadata();
       if (metadata == null || metadata['found'] != true) {
-        _collectingPayPeriods = false;
-        if (_capturedPages.isNotEmpty) await _finishWithCapturedPages();
+        // WMT sometimes emits an intermediate page-finished event during a
+        // pay-period postback. Never treat that transient state as completion.
+        await _retryCollection();
         return;
       }
 
@@ -220,8 +238,9 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
 
       final selectedValue = (metadata['selectedValue'] ?? '').toString().trim();
 
-      // WMT My Schedule opens on the current pay period. Capture that period
-      // and only the periods after it; older periods in the dropdown are ignored.
+      // WMT My Schedule opens on the current pay period. Freeze the target list
+      // from that selected option through the end of the dropdown so past
+      // periods are ignored but every future period must be verified.
       if (_expectedPeriodValues.isEmpty) {
         var currentIndex = metadata['selectedIndex'] is int
             ? metadata['selectedIndex'] as int
@@ -233,8 +252,21 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
         _expectedPeriodValues.addAll(options.skip(currentIndex));
       }
 
-      if (selectedValue.isNotEmpty && !_capturedPeriodValues.contains(selectedValue)) {
-        final rawHtml = await _controller.runJavaScriptReturningResult('document.documentElement.outerHTML');
+      // If a postback was requested, do not capture until WMT confirms that
+      // exact target is now selected. This prevents stale HTML from being
+      // counted as the next period.
+      if (_pendingPeriodValue != null && selectedValue != _pendingPeriodValue) {
+        await _retryCollection();
+        return;
+      }
+      _pendingPeriodValue = null;
+
+      if (selectedValue.isNotEmpty &&
+          _expectedPeriodValues.contains(selectedValue) &&
+          !_capturedPeriodValues.contains(selectedValue)) {
+        final rawHtml = await _controller.runJavaScriptReturningResult(
+          'document.documentElement.outerHTML',
+        );
         final html = _normalizeJavaScriptString(rawHtml);
         if (html.isNotEmpty) {
           _capturedPages.add(html);
@@ -252,12 +284,15 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       }
 
       if (nextValue == null) {
+        // Completion is allowed only after every target period has been
+        // captured and verified against the dropdown's selected value.
         _collectingPayPeriods = false;
         await _finishWithCapturedPages();
         return;
       }
 
       final jsNextValue = _jsQuoted(nextValue);
+      _pendingPeriodValue = nextValue;
       final advanceRaw = await _controller.runJavaScriptReturningResult('''
         (() => {
           const targetValue = '$jsNextValue';
@@ -266,26 +301,20 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
             const nearby = ((s.parentElement?.innerText || '') + ' ' +
               (s.previousElementSibling?.textContent || '')).replace(/\\s+/g, ' ');
             return /pay\\s*period/i.test(nearby) ||
-              Array.from(s.options || []).some(o => /^\\d{6}\$/.test((o.value || o.text || '').trim()));
+              Array.from(s.options || []).some(o => /^\\d{6}\\\$/.test((o.value || o.text || '').trim()));
           });
           if (!select) return 'no-select';
           const option = Array.from(select.options || []).find(o =>
             ((o.value || o.text || '').trim() === targetValue));
           if (!option) return 'no-option';
+          if ((select.value || '').trim() === (option.value || '').trim()) return 'already-selected';
+
           select.value = option.value;
           if (select.value !== option.value) select.selectedIndex = option.index;
-          select.dispatchEvent(new Event('input', {bubbles:true}));
+
+          // Fire one change event only. Calling both dispatchEvent(change) and
+          // select.onchange() can submit WMT twice and skip a pay period.
           select.dispatchEvent(new Event('change', {bubbles:true}));
-          try {
-            if (typeof select.onchange === 'function') select.onchange();
-          } catch (_) {}
-          setTimeout(() => {
-            const parent = select.parentElement || document;
-            const controls = Array.from(parent.querySelectorAll('button,input[type="submit"],input[type="button"],a'));
-            const go = controls.find(el => /^(go|view|submit|select)\$/i.test(
-              ((el.innerText || el.value || el.textContent || '') + '').trim()));
-            if (go) { try { go.click(); } catch (_) {} }
-          }, 150);
           return 'advanced:' + targetValue;
         })();
       ''');
@@ -294,15 +323,9 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       _collectingPayPeriods = false;
 
       if (advance == 'no-select' || advance == 'no-option') {
-        _noProgressRetries++;
-        if (_noProgressRetries >= 5) {
-          if (mounted) {
-            setState(() => _error =
-                'WMT offered ${_expectedPeriodValues.length} current/future pay periods, but only ${_capturedPeriodValues.length} could be loaded.');
-          }
-          await _finishWithCapturedPages();
-          return;
-        }
+        _pendingPeriodValue = null;
+        await _retryCollection();
+        return;
       }
 
       Future<void>.delayed(const Duration(seconds: 3), () async {
@@ -311,6 +334,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       });
     } catch (e) {
       _collectingPayPeriods = false;
+      _pendingPeriodValue = null;
       if (mounted) setState(() => _error = 'Automatic schedule collection paused: $e');
     }
   }
@@ -342,7 +366,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Text(
-              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then try to open My Schedule and collect the current and all future available pay periods automatically. Your password stays inside the FAA page and is not stored by the app.',
+              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then collect the current and every future available pay period automatically. Each period is verified before the app returns to your schedule. Your password stays inside the FAA page and is not stored by the app.',
             ),
           ),
           Expanded(child: WebViewWidget(controller: _controller)),
