@@ -37,9 +37,11 @@ class ScheduleHomePage extends StatefulWidget {
 class _ScheduleHomePageState extends State<ScheduleHomePage> {
   static const _htmlKey = 'saved_wmt_schedule_html';
   static const _updatedKey = 'saved_wmt_schedule_updated_at';
+  static const _changesKey = 'saved_wmt_schedule_changes';
 
   final _extractor = const WmtScheduleExtractor();
   List<DatedShift> _shifts = const [];
+  List<String> _scheduleChanges = const [];
   DateTime? _lastUpdated;
   ScheduleDisplaySettings _displaySettings = ScheduleDisplaySettings.defaults;
   bool _loading = true;
@@ -55,12 +57,14 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     final prefs = await SharedPreferences.getInstance();
     final html = prefs.getString(_htmlKey);
     final updated = prefs.getString(_updatedKey);
+    final savedChanges = prefs.getStringList(_changesKey) ?? const <String>[];
     final displaySettings = await ScheduleDisplaySettings.load();
 
     if (!mounted) return;
 
     if (html == null || html.isEmpty) {
       setState(() {
+        _scheduleChanges = savedChanges;
         _displaySettings = displaySettings;
         _loading = false;
       });
@@ -71,6 +75,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       final shifts = _extractor.extract(html);
       setState(() {
         _shifts = shifts;
+        _scheduleChanges = savedChanges;
         _lastUpdated = updated == null ? null : DateTime.tryParse(updated);
         _displaySettings = displaySettings;
         _loading = false;
@@ -78,6 +83,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       });
     } catch (e) {
       setState(() {
+        _scheduleChanges = savedChanges;
         _displaySettings = displaySettings;
         _loading = false;
         _error = 'Could not load the saved schedule.';
@@ -98,17 +104,61 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       return;
     }
 
+    final changes = _detectScheduleChanges(_shifts, shifts);
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_htmlKey, html);
     await prefs.setString(_updatedKey, now.toIso8601String());
+    await prefs.setStringList(_changesKey, changes);
 
     if (!mounted) return;
     setState(() {
       _shifts = shifts;
+      _scheduleChanges = changes;
       _lastUpdated = now;
       _error = null;
     });
+  }
+
+  List<String> _detectScheduleChanges(
+    List<DatedShift> previous,
+    List<DatedShift> current,
+  ) {
+    if (previous.isEmpty || current.isEmpty) return const [];
+
+    String dayKey(DateTime date) =>
+        '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+
+    final oldByDay = <String, DatedShift>{
+      for (final entry in previous) dayKey(entry.date): entry,
+    };
+    final newByDay = <String, DatedShift>{
+      for (final entry in current) dayKey(entry.date): entry,
+    };
+
+    // Only compare dates present in both pulls. This avoids flagging a newly
+    // available future pay period (or an expired old one) as a shift change.
+    final commonDays = oldByDay.keys
+        .where(newByDay.containsKey)
+        .toList()
+      ..sort();
+
+    final changes = <String>[];
+    for (final key in commonDays) {
+      final oldEntry = oldByDay[key]!;
+      final newEntry = newByDay[key]!;
+      final oldShift = oldEntry.shift.raw.trim();
+      final newShift = newEntry.shift.raw.trim();
+      if (oldShift.toUpperCase() == newShift.toUpperCase()) continue;
+
+      final date = newEntry.date;
+      changes.add(
+        '${date.month}/${date.day}/${date.year}: $oldShift → $newShift',
+      );
+    }
+    return changes;
   }
 
   Future<void> _openSettings() async {
@@ -219,6 +269,55 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       onPressed: _openCalendarSync,
                       icon: const Icon(Icons.event_available_outlined),
                       label: const Text('Add to Calendar'),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  _scheduleChanges.isEmpty
+                                      ? Icons.check_circle_outline
+                                      : Icons.notification_important_outlined,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Schedule Changes',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (_scheduleChanges.isEmpty)
+                              const Text(
+                                'No shift changes detected since the previous schedule update.',
+                              )
+                            else ...[
+                              Text(
+                                '${_scheduleChanges.length} change${_scheduleChanges.length == 1 ? '' : 's'} detected since the previous update:',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              for (final change in _scheduleChanges)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 5),
+                                  child: Text('• $change'),
+                                ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   ] else ...[
                     const SizedBox(height: 80),
