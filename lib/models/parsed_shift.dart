@@ -36,19 +36,17 @@ class ParsedShift {
   int get durationMinutes =>
       baseDurationMinutes + overtimeBeforeMinutes + overtimeAfterMinutes;
 
+  /// The time printed in the WMT shift name is the authoritative shift start.
+  /// L and Q remain labels/modifiers only; they do not move the calendar start.
+  /// Xtra before still extends overtime before the named shift time.
   int? get effectiveStartMinutes {
     if (startMinutes == null) return null;
-    var value = startMinutes!;
-    if (flexType == FlexType.late) value += 15;
-    value -= overtimeBeforeMinutes;
-    return value;
+    return startMinutes! - overtimeBeforeMinutes;
   }
 
   int? get effectiveEndMinutes {
     if (startMinutes == null) return null;
-    var regularStart = startMinutes!;
-    if (flexType == FlexType.late) regularStart += 15;
-    return regularStart + baseDurationMinutes + overtimeAfterMinutes;
+    return startMinutes! + baseDurationMinutes + overtimeAfterMinutes;
   }
 
   String get label {
