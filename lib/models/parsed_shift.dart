@@ -1,4 +1,4 @@
-enum ShiftType { regular, overtime, dayOff }
+enum ShiftType { regular, overtime, dayOff, sickLeave }
 
 enum FlexType { none, late, quarter }
 
@@ -26,6 +26,8 @@ class ParsedShift {
   final int overtimeAfterMinutes;
 
   bool get isDayOff => shiftType == ShiftType.dayOff;
+  bool get isSickLeave => shiftType == ShiftType.sickLeave;
+  bool get isNonWorking => isDayOff || isSickLeave;
   bool get isOvertime => shiftType == ShiftType.overtime;
   bool get hasXtraBefore => overtimeBeforeMinutes > 0;
   bool get hasXtraAfter => overtimeAfterMinutes > 0;
@@ -49,6 +51,7 @@ class ParsedShift {
 
   String get label {
     if (isDayOff) return 'Day Off';
+    if (isSickLeave) return 'Sick Leave';
     final parts = <String>[];
     if (isOvertime) parts.add(r'$ OT');
     if (isSupervisor) parts.add('Supervisor');
