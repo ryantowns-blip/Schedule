@@ -37,10 +37,22 @@ class LeaveCalendarService {
     final rangeStart = DateTime(dates.first.year, dates.first.month, dates.first.day);
     final last = dates.last;
     final rangeEnd = DateTime(last.year, last.month, last.day).add(const Duration(days: 2));
+
+    // Check every visible calendar, not just the ATC Annual Leave companion
+    // calendar. This catches Annual Leave that may already have been created by
+    // the normal schedule sync, an older version of the app, or manually.
+    final calendars = await _calendar.listCalendars();
+    final calendarIds = calendars
+        .where((calendar) => !calendar.hidden)
+        .map((calendar) => calendar.id)
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (!calendarIds.contains(calendarId)) calendarIds.add(calendarId);
+
     final existing = await _calendar.listEvents(
       rangeStart,
       rangeEnd,
-      calendarIds: [calendarId],
+      calendarIds: calendarIds,
     );
 
     var created = 0;
@@ -51,10 +63,12 @@ class LeaveCalendarService {
         final sameDay = event.startDate.year == start.year &&
             event.startDate.month == start.month &&
             event.startDate.day == start.day;
-        final description = event.description ?? '';
-        return sameDay &&
-            event.title.trim().toLowerCase() == 'annual leave' &&
-            (description.contains(_descriptionPrefix) || description.contains('Web Schedule Manager'));
+        if (!sameDay) return false;
+
+        // The title is the important conflict check. Do not require the event
+        // to have been created by this app because users may already have an
+        // Annual Leave event from another sync path or a manual entry.
+        return event.title.trim().toLowerCase() == 'annual leave';
       });
       if (duplicate) {
         skipped++;
