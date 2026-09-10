@@ -71,6 +71,7 @@ class CalendarSyncService {
   Future<int> countExistingMatches({
     required String calendarId,
     required List<DatedShift> shifts,
+    bool matchSameDate = false,
   }) async {
     final working = workingShifts(shifts);
     final holiday = holidayLeaveShifts(shifts);
@@ -81,10 +82,11 @@ class CalendarSyncService {
     );
     var count = 0;
     for (final entry in working) {
-      if (_findExistingFor(entry, existing) != null) count++;
+      if (_findExistingFor(entry, existing, matchSameDate: matchSameDate) != null) count++;
     }
     for (final entry in holiday) {
-      if (_findExistingOnDateByTitle(entry, existing, 'Holiday Leave') != null) {
+      if (_findExistingOnDateByTitle(entry, existing, 'Holiday Leave') != null ||
+          (matchSameDate && _findExistingOnDate(entry, existing) != null)) {
         count++;
       }
     }
@@ -97,6 +99,7 @@ class CalendarSyncService {
     required DuplicateHandling duplicateHandling,
     required List<Duration> reminders,
     required String annualLeaveColorHex,
+    bool matchSameDate = false,
   }) async {
     var created = 0;
     var updated = 0;
@@ -128,7 +131,7 @@ class CalendarSyncService {
       final start = _startFor(entry);
       final end = start.add(Duration(minutes: shift.durationMinutes));
       final description = '$_descriptionPrefix • WMT code: ${shift.raw}';
-      final match = _findExistingFor(entry, existing);
+      final match = _findExistingFor(entry, existing, matchSameDate: matchSameDate);
 
       if (match != null) {
         duplicates++;
@@ -162,8 +165,8 @@ class CalendarSyncService {
       final end = start.add(const Duration(days: 1));
       final description =
           '$_descriptionPrefix • Holiday Leave • WMT code: ${entry.shift.raw}';
-      final match =
-          _findExistingOnDateByTitle(entry, existing, 'Holiday Leave');
+      final match = _findExistingOnDateByTitle(entry, existing, 'Holiday Leave') ??
+          (matchSameDate ? _findExistingOnDate(entry, existing) : null);
 
       if (match != null) {
         duplicates++;
@@ -205,7 +208,7 @@ class CalendarSyncService {
         final end = start.add(Duration(minutes: shift.durationMinutes));
         final description =
             '$_descriptionPrefix • Annual Leave • WMT code: ${shift.raw}';
-        final match = _findExistingFor(entry, existingLeave);
+        final match = _findExistingFor(entry, existingLeave, matchSameDate: matchSameDate);
 
         if (match != null &&
             duplicateHandling == DuplicateHandling.updateExisting) {
@@ -285,7 +288,11 @@ class CalendarSyncService {
     return events.where(_looksLikeAtcManagerEvent).toList();
   }
 
-  dc.Event? _findExistingFor(DatedShift entry, List<dc.Event> events) {
+  dc.Event? _findExistingFor(
+    DatedShift entry,
+    List<dc.Event> events, {
+    bool matchSameDate = false,
+  }) {
     final startMinutes = entry.shift.effectiveStartMinutes;
     if (startMinutes == null) return null;
     final expected = DateTime(entry.date.year, entry.date.month, entry.date.day)
@@ -296,9 +303,21 @@ class CalendarSyncService {
           event.startDate.month == expected.month &&
           event.startDate.day == expected.day;
       if (!sameDay) continue;
+      if (matchSameDate) return event;
 
       final difference = event.startDate.difference(expected).inMinutes.abs();
       if (difference <= 180) return event;
+    }
+    return null;
+  }
+
+  dc.Event? _findExistingOnDate(DatedShift entry, List<dc.Event> events) {
+    for (final event in events) {
+      if (event.startDate.year == entry.date.year &&
+          event.startDate.month == entry.date.month &&
+          event.startDate.day == entry.date.day) {
+        return event;
+      }
     }
     return null;
   }
