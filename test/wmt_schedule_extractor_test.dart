@@ -44,6 +44,28 @@ void main() {
     expect(shifts.any((e) => e.shift.raw == r'1300L$'), isTrue);
   });
 
+  test('extracts annual leave and holiday leave from production WMT cells', () {
+    const html = r'''
+      <table>
+        <tr>
+          <td>Friday<br>10/09/2026<br>A<1415L></td>
+          <td>Saturday<br>10/10/2026<br>A<1415L></td>
+        </tr>
+        <tr>
+          <td>Sunday<br>10/11/2026<br>A<1300L></td>
+          <td>Monday<br>10/12/2026<br>HL</td>
+          <td>Tuesday<br>10/13/2026<br>A<0500L></td>
+        </tr>
+      </table>
+    ''';
+
+    final shifts = extractor.extract(html);
+    expect(shifts, hasLength(5));
+    expect(shifts.where((e) => e.shift.isAnnualLeave), hasLength(4));
+    expect(shifts.singleWhere((e) => e.date.day == 12).shift.isHolidayLeave, isTrue);
+    expect(shifts.singleWhere((e) => e.date.day == 9).shift.raw, 'A<1415L>');
+  });
+
   test('extracts dated shifts from data-date rows', () {
     const html = '''
       <div data-date="2026-09-10"><span>1400</span></div>
