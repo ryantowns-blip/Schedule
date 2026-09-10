@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/schedule_display_settings.dart';
+import 'screens/calendar_sync_page.dart';
 import 'screens/pay_period_schedule_view.dart';
 import 'screens/settings_page.dart';
 import 'screens/update_schedule_page.dart';
@@ -120,6 +121,13 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     setState(() => _displaySettings = result);
   }
 
+  Future<void> _openCalendarSync() async {
+    if (_shifts.isEmpty) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => CalendarSyncPage(shifts: _shifts)),
+    );
+  }
+
   String _formatUpdated(DateTime date) {
     final hour = date.hour == 0 ? 12 : date.hour > 12 ? date.hour - 12 : date.hour;
     final minute = date.minute.toString().padLeft(2, '0');
@@ -200,6 +208,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       onPressed: _updateSchedule,
                       icon: const Icon(Icons.sync),
                       label: const Text('Update Schedule'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _openCalendarSync,
+                      icon: const Icon(Icons.event_available_outlined),
+                      label: const Text('Add to Calendar'),
                     ),
                   ] else ...[
                     const SizedBox(height: 80),
