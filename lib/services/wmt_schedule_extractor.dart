@@ -128,10 +128,10 @@ class WmtScheduleExtractor {
   String _stripTags(String value) {
     final annualCodes = <String>[];
     var protected = value.replaceAllMapped(
-      RegExp(r'A<[^>]+>', caseSensitive: false),
+      RegExp(r'A(?:<|&lt;)(.*?)(?:>|&gt;)', caseSensitive: false),
       (match) {
         final index = annualCodes.length;
-        annualCodes.add(match.group(0)!);
+        annualCodes.add('A<${match.group(1) ?? ''}>');
         return 'ATC_ANNUAL_LEAVE_$index';
       },
     );
@@ -142,7 +142,9 @@ class WmtScheduleExtractor {
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
         .replaceAll(RegExp(r'<[^>]+>'), ' ')
         .replaceAll('&nbsp;', ' ')
-        .replaceAll('&amp;', '&');
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>');
 
     for (var i = 0; i < annualCodes.length; i++) {
       protected = protected.replaceAll('ATC_ANNUAL_LEAVE_$i', annualCodes[i]);
