@@ -36,7 +36,7 @@ class WmtScheduleExtractor {
 
     final results = <DatedShift>[];
     final rowPattern = RegExp(
-      r'<[^>]*(?:data-date|date)\s*=\s*["\']([^"\']+)["\'][^>]*>([\s\S]*?)</[^>]+>',
+      r'''<[^>]*(?:data-date|date)\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)</[^>]+>''',
       caseSensitive: false,
     );
 
@@ -88,7 +88,7 @@ class WmtScheduleExtractor {
       return null;
     }
     try {
-      return parser.parseLine(token);
+      return parser.parse(token);
     } catch (_) {
       return null;
     }
