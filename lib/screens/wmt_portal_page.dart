@@ -276,7 +276,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           setTimeout(() => {
             const parent = select.parentElement || document;
             const controls = Array.from(parent.querySelectorAll('button,input[type="submit"],input[type="button"],a'));
-            const go = controls.find(el => /^(go|view|submit|select)$/i.test(
+            const go = controls.find(el => /^(go|view|submit|select)\$/i.test(
               ((el.innerText || el.value || el.textContent || '') + '').trim()));
             if (go) { try { go.click(); } catch (_) {} }
           }, 150);
