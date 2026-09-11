@@ -9,6 +9,7 @@ import 'screens/screenshot_import_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/upcoming_leave_page.dart';
 import 'services/schedule_parser.dart';
+import 'services/screenshot_cleanup_service.dart';
 
 void main() => runApp(const AtcScheduleManagerApp());
 
@@ -42,6 +43,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   static const _changesKey = 'screenshot_schedule_changes';
 
   final _parser = const ScheduleParser();
+  final _cleanup = const ScreenshotCleanupService();
   List<DatedShift> _shifts = const [];
   List<String> _scheduleChanges = const [];
   DateTime? _lastUpdated;
@@ -86,19 +88,18 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   }
 
   Future<void> _importScreenshots() async {
-    final imported = await Navigator.of(context).push<List<DatedShift>>(
+    final reviewed = await Navigator.of(context).push<ScheduleScreenshotReviewResult>(
       MaterialPageRoute(builder: (_) => const ScreenshotImportPage()),
     );
-    if (!mounted || imported == null || imported.isEmpty) return;
+    if (!mounted || reviewed == null || reviewed.shifts.isEmpty) return;
 
+    final imported = reviewed.shifts;
     final changes = _detectScheduleChanges(_shifts, imported);
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
       _entriesKey,
-      imported
-          .map((entry) => '${entry.date.toIso8601String()}|${entry.shift.raw}')
-          .toList(),
+      imported.map((entry) => '${entry.date.toIso8601String()}|${entry.shift.raw}').toList(),
     );
     await prefs.setString(_updatedKey, now.toIso8601String());
     await prefs.setStringList(_changesKey, changes);
@@ -110,6 +111,36 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       _lastUpdated = now;
       _error = null;
     });
+
+    if (reviewed.deleteSourceImages && reviewed.sourceImages.isNotEmpty) {
+      try {
+        final result = await _cleanup.deleteSourceImages(reviewed.sourceImages);
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        if (result.permissionDenied) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Schedule saved. Screenshot deletion was skipped because photo-library access was not granted.')),
+          );
+        } else if (result.deleted == result.requested) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('Schedule saved. Deleted ${result.deleted} source screenshot${result.deleted == 1 ? '' : 's'}.')),
+          );
+        } else {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Schedule saved. Deleted ${result.deleted} of ${result.requested} source screenshots; unmatched or ambiguous images were left on the phone.',
+              ),
+            ),
+          );
+        }
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Schedule saved, but the source screenshots could not be deleted.')),
+        );
+      }
+    }
   }
 
   Future<void> _openUpcomingLeave() async {
