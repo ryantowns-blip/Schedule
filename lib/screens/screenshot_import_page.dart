@@ -5,6 +5,18 @@ import '../models/dated_shift.dart';
 import '../services/schedule_parser.dart';
 import '../services/screenshot_schedule_importer.dart';
 
+class ScheduleScreenshotReviewResult {
+  const ScheduleScreenshotReviewResult({
+    required this.shifts,
+    required this.sourceImages,
+    required this.deleteSourceImages,
+  });
+
+  final List<DatedShift> shifts;
+  final List<XFile> sourceImages;
+  final bool deleteSourceImages;
+}
+
 class ScreenshotImportPage extends StatefulWidget {
   const ScreenshotImportPage({super.key});
 
@@ -21,6 +33,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
   List<DatedShift> _reviewedShifts = const [];
   bool _busy = false;
   bool _reviewedWarnings = false;
+  bool _deleteSourceScreenshots = false;
   String? _error;
 
   Future<void> _pickScreenshots() async {
@@ -102,9 +115,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'The shift must match a supported ATC Schedule Manager code before it can be saved.',
-              ),
+              const Text('The shift must match a supported ATC Schedule Manager code before it can be saved.'),
             ],
           ),
           actions: [
@@ -116,13 +127,9 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
               onPressed: () {
                 try {
                   final parsed = _parser.parse(shiftController.text.trim());
-                  Navigator.of(context).pop(
-                    DatedShift(date: selectedDate, shift: parsed),
-                  );
+                  Navigator.of(context).pop(DatedShift(date: selectedDate, shift: parsed));
                 } catch (_) {
-                  setDialogState(() {
-                    validationError = 'Shift code not recognized';
-                  });
+                  setDialogState(() => validationError = 'Shift code not recognized');
                 }
               },
               child: const Text('Save'),
@@ -149,11 +156,20 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
     });
   }
 
+  void _finishImport() {
+    Navigator.of(context).pop(
+      ScheduleScreenshotReviewResult(
+        shifts: List<DatedShift>.from(_reviewedShifts),
+        sourceImages: List<XFile>.from(_images),
+        deleteSourceImages: _deleteSourceScreenshots,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final unresolved = _result?.unrecognizedLines ?? const <String>[];
-    final canImport = _reviewedShifts.isNotEmpty &&
-        (unresolved.isEmpty || _reviewedWarnings);
+    final canImport = _reviewedShifts.isNotEmpty && (unresolved.isEmpty || _reviewedWarnings);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Import Schedule Screenshots')),
@@ -208,10 +224,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                'Recognized entries',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
+              Text('Recognized entries', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               for (var i = 0; i < _reviewedShifts.length; i++)
                 Card(
@@ -246,20 +259,12 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Needs review',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                        ),
+                        Text('Needs review', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 6),
-                        const Text(
-                          'OCR found schedule-like text that it could not safely turn into an entry. Review these lines before importing.',
-                        ),
+                        const Text('OCR found schedule-like text that it could not safely turn into an entry. Review these lines before importing.'),
                         const SizedBox(height: 8),
                         for (final line in unresolved.take(12))
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 5),
-                            child: Text('• $line'),
-                          ),
+                          Padding(padding: const EdgeInsets.only(bottom: 5), child: Text('• $line')),
                         if (unresolved.length > 12)
                           Text('…and ${unresolved.length - 12} more line${unresolved.length - 12 == 1 ? '' : 's'}'),
                       ],
@@ -275,11 +280,22 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
               ],
+              const SizedBox(height: 8),
+              Card(
+                child: CheckboxListTile(
+                  value: _deleteSourceScreenshots,
+                  onChanged: (value) => setState(() => _deleteSourceScreenshots = value ?? false),
+                  title: const Text('Delete source screenshots after import'),
+                  subtitle: const Text(
+                    'Optional. After the schedule is saved, Lite will request photo-library access and the phone may ask you to confirm deletion. Images are deleted only when filename and file size uniquely match the screenshots you selected.',
+                  ),
+                  secondary: const Icon(Icons.delete_sweep_outlined),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ),
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: canImport
-                    ? () => Navigator.of(context).pop(_reviewedShifts)
-                    : null,
+                onPressed: canImport ? _finishImport : null,
                 icon: const Icon(Icons.check),
                 label: Text('Import ${_reviewedShifts.length} Entries'),
               ),
