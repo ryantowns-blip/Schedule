@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ATC Schedule Manager</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1>ATC Schedule Manager</h1>
+    <p class="sub">Firefox WMT capture prototype</p>
+
+    <button id="capture">Capture current WMT schedule</button>
+    <p id="status" class="status">Open your WMT Individual Schedule page, then tap Capture.</p>
+
+    <section id="summary" hidden>
+      <div class="summary-grid">
+        <div><span>Page</span><strong id="page-kind">—</strong></div>
+        <div><span>Pay period</span><strong id="pay-period">—</strong></div>
+        <div><span>Entries</span><strong id="count">0</strong></div>
+      </div>
+    </section>
+
+    <section id="preview" hidden>
+      <h2>Captured schedule</h2>
+      <div id="rows"></div>
+    </section>
+
+    <p class="privacy">Prototype: local, user-initiated capture only. No FAA credentials are collected and no captured WMT data is sent to a server.</p>
+  </main>
+
+  <script src="../parser.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

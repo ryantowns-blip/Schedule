@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "name": "ATC Schedule Manager - WMT Capture Prototype",
+  "version": "0.1.0",
+  "description": "User-initiated local capture of the currently displayed WMT schedule for ATC Schedule Manager.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage"
+  ],
+  "browser_action": {
+    "default_title": "ATC Schedule Manager",
+    "default_popup": "popup/popup.html"
+  },
+  "applications": {
+    "gecko": {
+      "id": "wmt-capture-prototype@atc-schedule-manager.local",
+      "strict_min_version": "120.0"
+    }
+  }
+}
