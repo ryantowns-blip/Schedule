@@ -13,15 +13,20 @@
         <h1>ATC Schedule Manager</h1>
         <p class="sub">Firefox schedule viewer</p>
       </div>
-      <span id="storage-badge" class="storage-badge">Local</span>
+      <span class="storage-badge">Local</span>
     </header>
 
     <section class="toolbar">
       <button id="capture">Update from current WMT page</button>
-      <button id="clear" class="secondary" type="button">Clear saved schedule</button>
+      <button id="clear" class="secondary" type="button">Clear saved schedules</button>
     </section>
 
-    <p id="status" class="status">Open WMT Individual Schedule when you want to refresh. Your last captured schedule remains available here locally.</p>
+    <p id="status" class="status">Open WMT Individual Schedule when you want to refresh. Saved schedules remain available here locally.</p>
+
+    <section id="period-picker" class="period-picker" hidden>
+      <label for="period-select">Saved pay period</label>
+      <select id="period-select"></select>
+    </section>
 
     <section id="summary" hidden>
       <div class="summary-grid">
@@ -34,14 +39,14 @@
     <section id="preview" hidden>
       <div class="section-heading">
         <h2>Schedule</h2>
-        <span id="today-label" class="today-key">TODAY</span>
+        <span class="today-key">TODAY</span>
       </div>
       <div id="rows"></div>
     </section>
 
     <section id="empty-state" class="empty-state">
       <strong>No schedule saved yet</strong>
-      <span>Log into WMT normally in Firefox, open Individual Schedule, then tap “Update from current WMT page.”</span>
+      <span>Log into WMT normally in Firefox, open Individual Schedule, then tap “Update from current WMT page.” Capture additional pay periods by selecting them in WMT and updating again.</span>
     </section>
 
     <p class="privacy">Schedule data is stored locally in Firefox. No FAA credentials are collected, and captured WMT data is not sent to a server.</p>
