@@ -1,7 +1,7 @@
 name: atc_schedule_manager
 description: ATC Schedule Manager Lite screenshot import edition with local schedule parsing and calendar sync.
 publish_to: 'none'
-version: 0.10.3+13
+version: 0.10.4+14
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
