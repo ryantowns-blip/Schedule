@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/dated_shift.dart';
 import '../services/schedule_parser.dart';
 import '../services/screenshot_schedule_importer.dart';
-import '../services/wmt_schedule_extractor.dart';
 
 class ScreenshotImportPage extends StatefulWidget {
   const ScreenshotImportPage({super.key});
@@ -162,7 +162,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
           padding: const EdgeInsets.all(16),
           children: [
             const Text(
-              'Select one or more screenshots of your schedule. The images are read on this device and are not uploaded by ATC Schedule Manager.',
+              'Select one or more screenshots of your schedule. The images are read on this device and are not uploaded by ATC Schedule Manager Lite.',
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
