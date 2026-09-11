@@ -80,21 +80,42 @@ class ScreenshotScheduleImporter {
     if (dates.length < 2 || shifts.isEmpty) return const [];
 
     // WMT pay periods always start on Sunday and contain two 7-day rows.
-    // Recover the Sunday anchor from any OCR-recognized date. This avoids
-    // pairing a shift with an arbitrary nearby date when OCR misses cells.
-    final anchors = dates.map((entry) {
+    // Screenshots may also contain unrelated page dates such as "Today's
+    // date: 09/11/2026". Choose the Sunday anchor supported by the largest
+    // number of OCR-recognized dates rather than simply taking the earliest
+    // date on the page.
+    final anchorCounts = <String, (DateTime, int)>{};
+    for (final entry in dates) {
       final d = entry.$2;
       final daysSinceSunday = d.weekday % 7;
-      return DateTime(d.year, d.month, d.day).subtract(Duration(days: daysSinceSunday));
-    }).toList()..sort();
-    final start = anchors.first;
+      final anchor = DateTime(d.year, d.month, d.day).subtract(Duration(days: daysSinceSunday));
+      final key = _dateKey(anchor);
+      final existing = anchorCounts[key];
+      anchorCounts[key] = (anchor, (existing?.$2 ?? 0) + 1);
+    }
+    if (anchorCounts.isEmpty) return const [];
+    final rankedAnchors = anchorCounts.values.toList()
+      ..sort((a, b) {
+        final byCount = b.$2.compareTo(a.$2);
+        if (byCount != 0) return byCount;
+        return a.$1.compareTo(b.$1);
+      });
+    final start = rankedAnchors.first.$1;
+
+    // Only dates inside this 14-day pay period participate in geometry.
+    // This removes page-header dates from the column/row fit as well.
+    final tableDates = dates.where((entry) {
+      final d = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
+      final offset = d.difference(start).inDays;
+      return offset >= 0 && offset <= 13;
+    }).toList();
+    if (tableDates.length < 2) return const [];
 
     // Fit the seven column centers from date positions + known weekdays.
     final xSamples = <(int, double)>[];
     final rowYSamples = <int, List<double>>{0: <double>[], 1: <double>[]};
-    for (final entry in dates) {
+    for (final entry in tableDates) {
       final dayOffset = DateTime(entry.$2.year, entry.$2.month, entry.$2.day).difference(start).inDays;
-      if (dayOffset < 0 || dayOffset > 13) continue;
       final column = dayOffset % 7;
       final row = dayOffset ~/ 7;
       xSamples.add((column, entry.$1.centerX));
@@ -173,9 +194,21 @@ class ScreenshotScheduleImporter {
       }
     }
 
-    final missingDates = recognizedDates.entries.where((entry) => !parsedDates.contains(entry.key)).map((entry) => entry.value).toList()..sort();
-    for (final date in missingDates) {
-      unresolved.add('No shift recognized for ${date.month}/${date.day}/${date.year}');
+    // Only flag missing dates that fall inside a parsed pay period. Page-level
+    // dates such as "Today's date" should never appear as missing schedule days.
+    if (parsed.isNotEmpty) {
+      final parsedDays = parsed.map((e) => DateTime(e.date.year, e.date.month, e.date.day)).toList()..sort();
+      final starts = parsedDays.map((d) => d.subtract(Duration(days: d.weekday % 7))).toSet();
+      for (final entry in recognizedDates.entries) {
+        final d = DateTime(entry.value.year, entry.value.month, entry.value.day);
+        final inParsedPeriod = starts.any((start) {
+          final offset = d.difference(start).inDays;
+          return offset >= 0 && offset <= 13;
+        });
+        if (inParsedPeriod && !parsedDates.contains(entry.key)) {
+          unresolved.add('No shift recognized for ${d.month}/${d.day}/${d.year}');
+        }
+      }
     }
     return unresolved.toSet().toList();
   }
