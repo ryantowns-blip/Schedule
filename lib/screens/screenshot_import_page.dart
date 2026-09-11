@@ -85,7 +85,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
 
   Future<void> _pickPdf() async {
     if (_busy) return;
-    final selected = await FilePicker.pickFiles(
+    final selected = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
       allowMultiple: false,
