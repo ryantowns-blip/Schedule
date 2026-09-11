@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/dated_shift.dart';
 import '../models/schedule_display_settings.dart';
-import '../services/wmt_schedule_extractor.dart';
 
 class PayPeriodSchedule {
   const PayPeriodSchedule({required this.start, required this.end, required this.shifts});
