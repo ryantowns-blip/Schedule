@@ -19,7 +19,7 @@ class AtcScheduleManagerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'ATC Schedule Manager',
+      title: 'ATC Schedule Manager Lite',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
@@ -210,7 +210,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ATC Schedule Manager'),
+        title: const Text('ATC Schedule Manager Lite'),
         actions: [
           IconButton(
             tooltip: 'Upcoming Leave',
@@ -245,7 +245,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
-                              'Screenshot Import edition: this app does not log into WMT or connect to the FAA website. Import screenshots from your phone to update the schedule.',
+                              'Lite screenshot edition: this app does not log into WMT or connect to the FAA website. Import screenshots from your phone to update the schedule.',
                             ),
                           ),
                         ],
