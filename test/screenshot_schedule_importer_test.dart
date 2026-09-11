@@ -36,7 +36,7 @@ void main() {
 
   test('recognizes overtime and xtra forms', () {
     final result = importer.parseRecognizedText(
-      '9/15/2026 $1400\n9/16/2026 Xtra1400\n9/17/2026 Xt1400ra',
+      '9/15/2026 \$1400\n9/16/2026 Xtra1400\n9/17/2026 Xt1400ra',
     );
     expect(result.$1, hasLength(3));
     expect(result.$1[0].shift.shiftType, ShiftType.overtime);
