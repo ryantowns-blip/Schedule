@@ -1,8 +1,8 @@
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+import '../models/dated_shift.dart';
 import '../models/parsed_shift.dart';
 import 'schedule_parser.dart';
-import 'wmt_schedule_extractor.dart';
 
 class ScreenshotImportResult {
   const ScreenshotImportResult({
