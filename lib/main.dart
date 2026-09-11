@@ -6,6 +6,7 @@ import 'screens/calendar_sync_page.dart';
 import 'screens/pay_period_schedule_view.dart';
 import 'screens/screenshot_import_page.dart';
 import 'screens/settings_page.dart';
+import 'screens/upcoming_leave_page.dart';
 import 'services/schedule_parser.dart';
 import 'services/wmt_schedule_extractor.dart';
 
@@ -111,6 +112,14 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     });
   }
 
+  Future<void> _openUpcomingLeave() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => UpcomingLeavePage(displaySettings: _displaySettings),
+      ),
+    );
+  }
+
   List<String> _detectScheduleChanges(
     List<DatedShift> previous,
     List<DatedShift> current,
@@ -204,6 +213,11 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
         title: const Text('ATC Schedule Manager'),
         actions: [
           IconButton(
+            tooltip: 'Upcoming Leave',
+            onPressed: _openUpcomingLeave,
+            icon: const Icon(Icons.beach_access_outlined),
+          ),
+          IconButton(
             tooltip: 'Settings',
             onPressed: _openSettings,
             icon: const Icon(Icons.settings_outlined),
@@ -274,6 +288,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
+                      onPressed: _openUpcomingLeave,
+                      icon: const Icon(Icons.beach_access_outlined),
+                      label: const Text('Upcoming Leave'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
                       onPressed: () => _openCalendarSync(),
                       icon: const Icon(Icons.event_available_outlined),
                       label: const Text('Add to Calendar'),
@@ -332,6 +352,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       onPressed: _importScreenshots,
                       icon: const Icon(Icons.add_photo_alternate_outlined),
                       label: const Text('Import Schedule Screenshots'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _openUpcomingLeave,
+                      icon: const Icon(Icons.beach_access_outlined),
+                      label: const Text('Upcoming Leave'),
                     ),
                   ],
                 ],
