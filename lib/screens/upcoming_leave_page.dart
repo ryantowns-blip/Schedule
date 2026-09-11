@@ -76,8 +76,8 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       _message = null;
     });
     try {
-      final color =
-          widget.displaySettings.annualLeaveColor ?? const Color(0xFFD8F3DC);
+      final color = widget.displaySettings.annualLeaveCalendarColor ??
+          const Color(0xFFD8F3DC);
       final hex =
           '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
       final result =
