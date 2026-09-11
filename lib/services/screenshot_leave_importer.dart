@@ -28,7 +28,7 @@ class ScreenshotLeaveImporter {
         final image = InputImage.fromFilePath(path);
         final recognized = await recognizer.processImage(image);
         raw.writeln(recognized.text);
-        final parsed = _parseText(recognized.text);
+        final parsed = parseRecognizedText(recognized.text);
         entries.addAll(parsed.$1);
         unresolved.addAll(parsed.$2);
       }
@@ -51,7 +51,9 @@ class ScreenshotLeaveImporter {
     }
   }
 
-  (List<UpcomingLeaveEntry>, List<String>) _parseText(String text) {
+  /// Parses OCR text without requiring an image, allowing regression tests for
+  /// WMT My Leave layout and wording independently from ML Kit.
+  (List<UpcomingLeaveEntry>, List<String>) parseRecognizedText(String text) {
     final entries = <UpcomingLeaveEntry>[];
     final unresolved = <String>[];
     DateTime? pendingDate;
