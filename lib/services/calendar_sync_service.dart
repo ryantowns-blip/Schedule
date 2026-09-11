@@ -1,7 +1,7 @@
 import 'package:device_calendar_plus/device_calendar_plus.dart' as dc;
 
+import '../models/dated_shift.dart';
 import '../models/parsed_shift.dart';
-import 'wmt_schedule_extractor.dart';
 
 enum DuplicateHandling { updateExisting, createNew }
 
@@ -33,7 +33,7 @@ class CalendarSyncService {
   CalendarSyncService({dc.DeviceCalendar? calendar})
       : _calendar = calendar ?? dc.DeviceCalendar.instance;
 
-  static const _descriptionPrefix = 'Web Schedule Manager';
+  static const _descriptionPrefix = 'ATC Schedule Manager Lite';
   static const _legacyDescriptionPrefix = 'ATC Schedule Manager';
   static const _annualLeaveCalendarName = 'ATC Annual Leave';
 
@@ -171,7 +171,7 @@ class CalendarSyncService {
 
       final start = _startFor(entry);
       final end = start.add(Duration(minutes: shift.durationMinutes));
-      final description = '$_descriptionPrefix • WMT code: ${shift.raw}';
+      final description = '$_descriptionPrefix • Schedule code: ${shift.raw}';
       final match = _findExistingFor(entry, existing, matchSameDate: matchSameDate);
 
       if (match != null) {
@@ -205,7 +205,7 @@ class CalendarSyncService {
       final start = DateTime(entry.date.year, entry.date.month, entry.date.day);
       final end = start.add(const Duration(days: 1));
       final description =
-          '$_descriptionPrefix • Holiday Leave • WMT code: ${entry.shift.raw}';
+          '$_descriptionPrefix • Holiday Leave • Schedule code: ${entry.shift.raw}';
       final match = _findExistingOnDateByTitle(entry, existing, 'Holiday Leave') ??
           (matchSameDate ? _findExistingOnDate(entry, existing) : null);
 
@@ -248,7 +248,7 @@ class CalendarSyncService {
         final start = _startFor(entry);
         final end = start.add(Duration(minutes: shift.durationMinutes));
         final description =
-            '$_descriptionPrefix • Annual Leave • WMT code: ${shift.raw}';
+            '$_descriptionPrefix • Annual Leave • Schedule code: ${shift.raw}';
         final match = _findExistingFor(entry, existingLeave, matchSameDate: matchSameDate);
 
         if (match != null &&
@@ -394,7 +394,8 @@ class CalendarSyncService {
   bool _looksLikeAtcManagerEvent(dc.Event event) {
     final description = event.description ?? '';
     if (description.contains(_descriptionPrefix) ||
-        description.contains(_legacyDescriptionPrefix)) return true;
+        description.contains(_legacyDescriptionPrefix) ||
+        description.contains('Web Schedule Manager')) return true;
     final title = event.title.trim().toLowerCase();
     return title == 'annual leave' ||
         title == 'holiday leave' ||
