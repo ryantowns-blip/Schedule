@@ -32,7 +32,7 @@ class ScreenshotScheduleImporter {
         final image = InputImage.fromFilePath(path);
         final recognized = await recognizer.processImage(image);
         raw.writeln(recognized.text);
-        final parsed = _parseRecognizedText(recognized.text);
+        final parsed = parseRecognizedText(recognized.text);
         allShifts.addAll(parsed.$1);
         unrecognized.addAll(parsed.$2);
       }
@@ -55,7 +55,9 @@ class ScreenshotScheduleImporter {
     }
   }
 
-  (List<DatedShift>, List<String>) _parseRecognizedText(String text) {
+  /// Parses OCR text without requiring an image. Kept public so the WMT-specific
+  /// OCR rules can be regression-tested independently from ML Kit.
+  (List<DatedShift>, List<String>) parseRecognizedText(String text) {
     final shifts = <DatedShift>[];
     final unrecognized = <String>[];
     DateTime? pendingDate;
