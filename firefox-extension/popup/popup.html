@@ -8,26 +8,43 @@
 </head>
 <body>
   <main>
-    <h1>ATC Schedule Manager</h1>
-    <p class="sub">Firefox WMT capture prototype</p>
+    <header class="app-header">
+      <div>
+        <h1>ATC Schedule Manager</h1>
+        <p class="sub">Firefox schedule viewer</p>
+      </div>
+      <span id="storage-badge" class="storage-badge">Local</span>
+    </header>
 
-    <button id="capture">Capture current WMT schedule</button>
-    <p id="status" class="status">Open your WMT Individual Schedule page, then tap Capture.</p>
+    <section class="toolbar">
+      <button id="capture">Update from current WMT page</button>
+      <button id="clear" class="secondary" type="button">Clear saved schedule</button>
+    </section>
+
+    <p id="status" class="status">Open WMT Individual Schedule when you want to refresh. Your last captured schedule remains available here locally.</p>
 
     <section id="summary" hidden>
       <div class="summary-grid">
-        <div><span>Page</span><strong id="page-kind">—</strong></div>
         <div><span>Pay period</span><strong id="pay-period">—</strong></div>
         <div><span>Entries</span><strong id="count">0</strong></div>
+        <div><span>Updated</span><strong id="updated">—</strong></div>
       </div>
     </section>
 
     <section id="preview" hidden>
-      <h2>Captured schedule</h2>
+      <div class="section-heading">
+        <h2>Schedule</h2>
+        <span id="today-label" class="today-key">TODAY</span>
+      </div>
       <div id="rows"></div>
     </section>
 
-    <p class="privacy">Prototype: local, user-initiated capture only. No FAA credentials are collected and no captured WMT data is sent to a server.</p>
+    <section id="empty-state" class="empty-state">
+      <strong>No schedule saved yet</strong>
+      <span>Log into WMT normally in Firefox, open Individual Schedule, then tap “Update from current WMT page.”</span>
+    </section>
+
+    <p class="privacy">Schedule data is stored locally in Firefox. No FAA credentials are collected, and captured WMT data is not sent to a server.</p>
   </main>
 
   <script src="../parser.js"></script>
