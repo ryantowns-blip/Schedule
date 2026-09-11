@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atc-schedule-manager.local/schema/extension-app-payload-v1.json",
+  "title": "ATC Schedule Manager Extension Transfer Payload",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "source", "payPeriods"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "source": { "const": "firefox-extension" },
+    "payPeriods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "capturedAt", "entries"],
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "label": { "type": ["string", "null"] },
+          "capturedAt": { "type": "string", "format": "date-time" },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["date", "raw", "shiftType"],
+              "properties": {
+                "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                "raw": { "type": "string" },
+                "shiftType": {
+                  "enum": ["regular", "overtime", "annualLeave", "sickLeave", "holidayLeave", "dayOff"]
+                },
+                "startMinutes": { "type": ["integer", "null"], "minimum": 0, "maximum": 1439 },
+                "overtimeBeforeMinutes": { "type": "integer", "minimum": 0 },
+                "overtimeAfterMinutes": { "type": "integer", "minimum": 0 },
+                "flexType": { "enum": ["none", "late", "quarter", null] },
+                "isSupervisor": { "type": "boolean" },
+                "isCic": { "type": "boolean" }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
