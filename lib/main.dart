@@ -4,9 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models/schedule_display_settings.dart';
 import 'screens/calendar_sync_page.dart';
 import 'screens/pay_period_schedule_view.dart';
+import 'screens/screenshot_import_page.dart';
 import 'screens/settings_page.dart';
-import 'screens/upcoming_leave_page.dart';
-import 'screens/update_schedule_page.dart';
+import 'services/schedule_parser.dart';
 import 'services/wmt_schedule_extractor.dart';
 
 void main() => runApp(const AtcScheduleManagerApp());
@@ -18,7 +18,7 @@ class AtcScheduleManagerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Web Schedule Manager',
+      title: 'ATC Schedule Manager',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
@@ -36,11 +36,11 @@ class ScheduleHomePage extends StatefulWidget {
 }
 
 class _ScheduleHomePageState extends State<ScheduleHomePage> {
-  static const _htmlKey = 'saved_wmt_schedule_html';
-  static const _updatedKey = 'saved_wmt_schedule_updated_at';
-  static const _changesKey = 'saved_wmt_schedule_changes';
+  static const _entriesKey = 'screenshot_schedule_entries';
+  static const _updatedKey = 'screenshot_schedule_updated_at';
+  static const _changesKey = 'screenshot_schedule_changes';
 
-  final _extractor = const WmtScheduleExtractor();
+  final _parser = const ScheduleParser();
   List<DatedShift> _shifts = const [];
   List<String> _scheduleChanges = const [];
   DateTime? _lastUpdated;
@@ -56,65 +56,55 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
 
   Future<void> _loadSavedSchedule() async {
     final prefs = await SharedPreferences.getInstance();
-    final html = prefs.getString(_htmlKey);
+    final savedEntries = prefs.getStringList(_entriesKey) ?? const <String>[];
     final updated = prefs.getString(_updatedKey);
     final savedChanges = prefs.getStringList(_changesKey) ?? const <String>[];
     final displaySettings = await ScheduleDisplaySettings.load();
 
+    final shifts = <DatedShift>[];
+    for (final row in savedEntries) {
+      final separator = row.indexOf('|');
+      if (separator <= 0 || separator >= row.length - 1) continue;
+      final date = DateTime.tryParse(row.substring(0, separator));
+      if (date == null) continue;
+      try {
+        final shift = _parser.parse(row.substring(separator + 1));
+        shifts.add(DatedShift(date: date, shift: shift));
+      } catch (_) {}
+    }
+    shifts.sort((a, b) => a.date.compareTo(b.date));
+
     if (!mounted) return;
-
-    if (html == null || html.isEmpty) {
-      setState(() {
-        _scheduleChanges = savedChanges;
-        _displaySettings = displaySettings;
-        _loading = false;
-      });
-      return;
-    }
-
-    try {
-      final shifts = _extractor.extract(html);
-      setState(() {
-        _shifts = shifts;
-        _scheduleChanges = savedChanges;
-        _lastUpdated = updated == null ? null : DateTime.tryParse(updated);
-        _displaySettings = displaySettings;
-        _loading = false;
-        _error = shifts.isEmpty ? 'Saved WMT data was found, but no schedule entries could be read.' : null;
-      });
-    } catch (e) {
-      setState(() {
-        _scheduleChanges = savedChanges;
-        _displaySettings = displaySettings;
-        _loading = false;
-        _error = 'Could not load the saved schedule.';
-      });
-    }
+    setState(() {
+      _shifts = shifts;
+      _scheduleChanges = savedChanges;
+      _lastUpdated = updated == null ? null : DateTime.tryParse(updated);
+      _displaySettings = displaySettings;
+      _loading = false;
+    });
   }
 
-  Future<void> _updateSchedule() async {
-    final html = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const UpdateSchedulePage()),
+  Future<void> _importScreenshots() async {
+    final imported = await Navigator.of(context).push<List<DatedShift>>(
+      MaterialPageRoute(builder: (_) => const ScreenshotImportPage()),
     );
+    if (!mounted || imported == null || imported.isEmpty) return;
 
-    if (!mounted || html == null || html.isEmpty) return;
-
-    final shifts = _extractor.extract(html);
-    if (shifts.isEmpty) {
-      setState(() => _error = 'The WMT page was captured, but no schedule entries were recognized.');
-      return;
-    }
-
-    final changes = _detectScheduleChanges(_shifts, shifts);
+    final changes = _detectScheduleChanges(_shifts, imported);
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_htmlKey, html);
+    await prefs.setStringList(
+      _entriesKey,
+      imported
+          .map((entry) => '${entry.date.toIso8601String()}|${entry.shift.raw}')
+          .toList(),
+    );
     await prefs.setString(_updatedKey, now.toIso8601String());
     await prefs.setStringList(_changesKey, changes);
 
     if (!mounted) return;
     setState(() {
-      _shifts = shifts;
+      _shifts = imported;
       _scheduleChanges = changes;
       _lastUpdated = now;
       _error = null;
@@ -139,11 +129,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       for (final entry in current) dayKey(entry.date): entry,
     };
 
-    final commonDays = oldByDay.keys
-        .where(newByDay.containsKey)
-        .toList()
-      ..sort();
-
+    final commonDays = oldByDay.keys.where(newByDay.containsKey).toList()..sort();
     final changes = <String>[];
     for (final key in commonDays) {
       final oldEntry = oldByDay[key]!;
@@ -151,11 +137,8 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       final oldShift = oldEntry.shift.raw.trim();
       final newShift = newEntry.shift.raw.trim();
       if (oldShift.toUpperCase() == newShift.toUpperCase()) continue;
-
       final date = newEntry.date;
-      changes.add(
-        '${date.month}/${date.day}/${date.year}: $oldShift → $newShift',
-      );
+      changes.add('${date.month}/${date.day}/${date.year}: $oldShift → $newShift');
     }
     return changes;
   }
@@ -193,35 +176,15 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     setState(() => _displaySettings = result);
   }
 
-  Future<void> _openUpcomingLeave() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => UpcomingLeavePage(displaySettings: _displaySettings),
-      ),
-    );
-  }
-
-  Future<void> _openCalendarSync() async {
-    if (_shifts.isEmpty) return;
+  Future<void> _openCalendarSync({bool changesOnly = false}) async {
+    final shifts = changesOnly ? _changedShifts() : _shifts;
+    if (shifts.isEmpty) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => CalendarSyncPage(
-          shifts: _shifts,
+          shifts: shifts,
           displaySettings: _displaySettings,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openChangedCalendarSync() async {
-    final changed = _changedShifts();
-    if (changed.isEmpty) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => CalendarSyncPage(
-          shifts: changed,
-          displaySettings: _displaySettings,
-          changeUpdateMode: true,
+          changeUpdateMode: changesOnly,
         ),
       ),
     );
@@ -238,22 +201,17 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Web Schedule Manager'),
+        title: const Text('ATC Schedule Manager'),
         actions: [
-          IconButton(
-            tooltip: 'Upcoming Leave',
-            onPressed: _openUpcomingLeave,
-            icon: const Icon(Icons.beach_access_outlined),
-          ),
           IconButton(
             tooltip: 'Settings',
             onPressed: _openSettings,
             icon: const Icon(Icons.settings_outlined),
           ),
           IconButton(
-            tooltip: 'Update schedule',
-            onPressed: _updateSchedule,
-            icon: const Icon(Icons.refresh),
+            tooltip: 'Import screenshots',
+            onPressed: _importScreenshots,
+            icon: const Icon(Icons.add_photo_alternate_outlined),
           ),
         ],
       ),
@@ -263,18 +221,33 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (_error != null) ...[
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
-                        ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.shield_outlined),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Screenshot Import edition: this app does not log into WMT or connect to the FAA website. Import screenshots from your phone to update the schedule.',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 10),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Text(_error!),
+                      ),
+                    ),
                   ],
+                  const SizedBox(height: 12),
                   if (_shifts.isNotEmpty) ...[
                     Card(
                       child: Padding(
@@ -287,41 +260,21 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                     ),
                     if (_lastUpdated != null) ...[
                       const SizedBox(height: 10),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.history, size: 18),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  'Schedule data last updated: ${_formatUpdated(_lastUpdated!)}',
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      Text(
+                        'Schedule data last updated: ${_formatUpdated(_lastUpdated!)}',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
                       ),
                     ],
                     const SizedBox(height: 16),
                     FilledButton.icon(
-                      onPressed: _updateSchedule,
-                      icon: const Icon(Icons.sync),
-                      label: const Text('Update Schedule'),
+                      onPressed: _importScreenshots,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Import New Screenshots'),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
-                      onPressed: _openUpcomingLeave,
-                      icon: const Icon(Icons.beach_access_outlined),
-                      label: const Text('Upcoming Leave'),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _openCalendarSync,
+                      onPressed: () => _openCalendarSync(),
                       icon: const Icon(Icons.event_available_outlined),
                       label: const Text('Add to Calendar'),
                     ),
@@ -332,38 +285,11 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  _scheduleChanges.isEmpty
-                                      ? Icons.check_circle_outline
-                                      : Icons.notification_important_outlined,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Schedule Changes',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
+                            Text('Schedule Changes', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
                             if (_scheduleChanges.isEmpty)
-                              const Text(
-                                'No shift changes detected since the previous schedule update.',
-                              )
+                              const Text('No shift changes detected since the previous screenshot import.')
                             else ...[
-                              Text(
-                                '${_scheduleChanges.length} change${_scheduleChanges.length == 1 ? '' : 's'} detected since the previous update:',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 8),
                               for (final change in _scheduleChanges)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 5),
@@ -373,16 +299,10 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                               SizedBox(
                                 width: double.infinity,
                                 child: FilledButton.icon(
-                                  onPressed: _changedShifts().isEmpty ? null : _openChangedCalendarSync,
+                                  onPressed: _changedShifts().isEmpty ? null : () => _openCalendarSync(changesOnly: true),
                                   icon: const Icon(Icons.edit_calendar_outlined),
-                                  label: Text(
-                                    'Update Calendar (${_scheduleChanges.length})',
-                                  ),
+                                  label: Text('Update Calendar (${_scheduleChanges.length})'),
                                 ),
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Only the dates with detected changes will be sent to calendar update mode.',
                               ),
                             ],
                           ],
@@ -390,34 +310,28 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       ),
                     ),
                   ] else ...[
-                    const SizedBox(height: 80),
+                    const SizedBox(height: 70),
                     Icon(
-                      Icons.calendar_month_outlined,
+                      Icons.photo_library_outlined,
                       size: 72,
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'No saved schedule yet',
+                      'No schedule imported yet',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Connect to WMT once to save your schedule on this phone. After that, the saved schedule will be the first thing you see when the app opens.',
+                      'Take screenshots of your schedule pages, then select them here. The app will read the dates and shift codes locally and let you review the results before saving.',
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: _updateSchedule,
-                      icon: const Icon(Icons.sync),
-                      label: const Text('Get Schedule'),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _openUpcomingLeave,
-                      icon: const Icon(Icons.beach_access_outlined),
-                      label: const Text('Upcoming Leave'),
+                      onPressed: _importScreenshots,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Import Schedule Screenshots'),
                     ),
                   ],
                 ],
