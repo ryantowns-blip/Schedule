@@ -85,7 +85,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
 
   Future<void> _pickPdf() async {
     if (_busy) return;
-    final selected = await FilePicker.platform.pickFiles(
+    final selected = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
       allowMultiple: false,
@@ -144,7 +144,9 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Could not read the selected ${_usingPdf ? 'PDF' : 'screenshots'}: $e');
+      setState(() => _error = _usingPdf
+          ? 'Could not read the selected PDF: $e'
+          : 'Could not read the selected screenshots: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -175,7 +177,9 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                     firstDate: DateTime(selectedDate.year - 1),
                     lastDate: DateTime(selectedDate.year + 2),
                   );
-                  if (picked != null) setDialogState(() => selectedDate = picked);
+                  if (picked != null) {
+                    setDialogState(() => selectedDate = picked);
+                  }
                 },
                 icon: const Icon(Icons.calendar_today_outlined),
                 label: Text(_date(selectedDate)),
@@ -196,7 +200,10 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               onPressed: () {
                 try {
@@ -230,15 +237,14 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
     });
   }
 
-  Future<void> _finishImport() async {
-    final result = ScheduleScreenshotReviewResult(
-      shifts: List<DatedShift>.from(_reviewedShifts),
-      sourceImages: List<XFile>.from(_images),
-      deleteSourceImages: !_usingPdf && _deleteSourceScreenshots,
+  void _finishImport() {
+    Navigator.of(context).pop(
+      ScheduleScreenshotReviewResult(
+        shifts: List<DatedShift>.from(_reviewedShifts),
+        sourceImages: List<XFile>.from(_images),
+        deleteSourceImages: _deleteSourceScreenshots,
+      ),
     );
-    await _clearTemporaryPdfImages();
-    if (!mounted) return;
-    Navigator.of(context).pop(result);
   }
 
   @override
@@ -253,7 +259,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
           padding: const EdgeInsets.all(16),
           children: [
             const Text(
-              'Screenshots are the fastest option. Select one or more schedule screenshots and Lite will read them locally on this device.',
+              'Screenshots are the quickest option. You can also import a PDF saved from WMT. Everything is processed locally on this device.',
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
@@ -265,18 +271,13 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
             OutlinedButton.icon(
               onPressed: _busy ? null : _pickPdf,
               icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: Text(_usingPdf ? 'Choose Different PDF' : 'Import PDF'),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'PDF is optional. A WMT Print/Save as PDF file is rendered locally and sent through the same review process.',
-              style: Theme.of(context).textTheme.bodySmall,
+              label: const Text('Import PDF'),
             ),
             if (_images.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text('${_images.length} screenshot${_images.length == 1 ? '' : 's'} selected'),
             ],
-            if (_usingPdf) ...[
+            if (_pdfFileName != null) ...[
               const SizedBox(height: 10),
               Text('PDF selected: $_pdfFileName (${_analysisPaths.length} page${_analysisPaths.length == 1 ? '' : 's'})'),
             ],
@@ -284,7 +285,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
               const SizedBox(height: 24),
               const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 10),
-              Text(_usingPdf ? 'Reading PDF…' : 'Reading screenshots…', textAlign: TextAlign.center),
+              Text(_usingPdf ? 'Preparing and reading PDF…' : 'Reading screenshots…', textAlign: TextAlign.center),
             ],
             if (_error != null) ...[
               const SizedBox(height: 14),
@@ -326,8 +327,16 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                     trailing: Wrap(
                       spacing: 2,
                       children: [
-                        IconButton(tooltip: 'Edit', onPressed: () => _editEntry(i), icon: const Icon(Icons.edit_outlined)),
-                        IconButton(tooltip: 'Remove', onPressed: () => _removeEntry(i), icon: const Icon(Icons.delete_outline)),
+                        IconButton(
+                          tooltip: 'Edit',
+                          onPressed: () => _editEntry(i),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove',
+                          onPressed: () => _removeEntry(i),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
                       ],
                     ),
                   ),
@@ -386,7 +395,9 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
               if (_reviewedShifts.isEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'No valid schedule entries were recognized. Try ${_usingPdf ? 'a WMT Print/Save as PDF file or clear screenshots' : 'screenshots that clearly show both the dates and shift codes'}.',
+                  _usingPdf
+                      ? 'No valid schedule entries were recognized. Try a PDF exported directly from WMT or use screenshots instead.'
+                      : 'No valid schedule entries were recognized. Try screenshots that clearly show both the dates and shift codes.',
                   textAlign: TextAlign.center,
                 ),
               ],
