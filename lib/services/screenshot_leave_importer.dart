@@ -58,6 +58,21 @@ class ScreenshotLeaveImporter {
     final unresolved = <String>[];
     DateTime? pendingDate;
     String? pendingType;
+    String? pendingLine;
+
+    void clearPending() {
+      pendingDate = null;
+      pendingType = null;
+      pendingLine = null;
+    }
+
+    void flushPendingForReview() {
+      final line = pendingLine;
+      if (line != null && line.isNotEmpty && !unresolved.contains(line)) {
+        unresolved.add(line);
+      }
+      clearPending();
+    }
 
     final lines = text.split(RegExp(r'\r?\n'));
     for (final original in lines) {
@@ -69,19 +84,20 @@ class ScreenshotLeaveImporter {
       final status = _findStatus(line);
 
       if (date != null && status != null) {
+        if (pendingDate != null) flushPendingForReview();
         entries.add(UpcomingLeaveEntry(
           date: date,
           type: type ?? 'Annual',
           status: status,
         ));
-        pendingDate = null;
-        pendingType = null;
         continue;
       }
 
       if (date != null) {
+        if (pendingDate != null) flushPendingForReview();
         pendingDate = date;
         pendingType = type;
+        pendingLine = line;
         continue;
       }
 
@@ -91,13 +107,14 @@ class ScreenshotLeaveImporter {
           type: type ?? pendingType ?? 'Annual',
           status: status,
         ));
-        pendingDate = null;
-        pendingType = null;
+        clearPending();
         continue;
       }
 
       if (_looksLeaveLike(line)) unresolved.add(line);
     }
+
+    if (pendingDate != null) flushPendingForReview();
 
     return (entries, unresolved);
   }
