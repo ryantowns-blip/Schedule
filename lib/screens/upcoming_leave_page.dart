@@ -65,84 +65,151 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
     });
   }
 
-  Future<bool> _reviewLeaveImport(ScreenshotLeaveImportResult result) async {
-    var reviewedWarnings = result.unrecognizedLines.isEmpty;
-    final approved = result.entries.where((entry) => entry.isApproved).length;
+  Future<UpcomingLeaveEntry?> _editLeaveEntry(UpcomingLeaveEntry entry) async {
+    var date = entry.date;
+    var type = entry.type;
+    var status = entry.status;
+    const types = ['Annual', 'Holiday', 'Sick'];
+    const statuses = ['Approved', 'Pending', 'Denied', 'Cancelled'];
+    if (!types.contains(type)) type = 'Annual';
+    if (!statuses.contains(status)) status = 'Pending';
 
-    return await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => AlertDialog(
-              title: const Text('Review Leave Import'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${result.entries.length} leave entr${result.entries.length == 1 ? 'y' : 'ies'} recognized, including $approved approved.',
+    return showDialog<UpcomingLeaveEntry>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Leave Entry'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_today_outlined),
+                title: const Text('Date'),
+                subtitle: Text(_date(date)),
+                trailing: const Icon(Icons.edit_calendar_outlined),
+                onTap: () async {
+                  final selected = await showDatePicker(
+                    context: context,
+                    initialDate: date,
+                    firstDate: DateTime(date.year - 2),
+                    lastDate: DateTime(date.year + 5),
+                  );
+                  if (selected != null) setDialogState(() => date = selected);
+                },
+              ),
+              DropdownButtonFormField<String>(
+                value: type,
+                decoration: const InputDecoration(labelText: 'Leave type'),
+                items: [for (final value in types) DropdownMenuItem(value: value, child: Text(value))],
+                onChanged: (value) {
+                  if (value != null) setDialogState(() => type = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: status,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: [for (final value in statuses) DropdownMenuItem(value: value, child: Text(value))],
+                onChanged: (value) {
+                  if (value != null) setDialogState(() => status = value);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                UpcomingLeaveEntry(date: date, type: type, status: status),
+              ),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<List<UpcomingLeaveEntry>?> _reviewLeaveImport(ScreenshotLeaveImportResult result) async {
+    var reviewedWarnings = result.unrecognizedLines.isEmpty;
+    final entries = List<UpcomingLeaveEntry>.from(result.entries);
+
+    return showDialog<List<UpcomingLeaveEntry>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final approved = entries.where((entry) => entry.isApproved).length;
+          return AlertDialog(
+            title: const Text('Review Leave Import'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${entries.length} leave entr${entries.length == 1 ? 'y' : 'ies'} ready, including $approved approved.'),
+                    const SizedBox(height: 8),
+                    const Text('Tap an entry to correct the date, leave type, or status before saving.'),
+                    const SizedBox(height: 12),
+                    for (var index = 0; index < entries.length; index++)
+                      Card(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.only(left: 12, right: 4),
+                          leading: const Icon(Icons.calendar_today_outlined, size: 18),
+                          title: Text(_date(entries[index].date)),
+                          subtitle: Text('${entries[index].type} • ${entries[index].status}'),
+                          onTap: () async {
+                            final edited = await _editLeaveEntry(entries[index]);
+                            if (edited != null) setDialogState(() => entries[index] = edited);
+                          },
+                          trailing: IconButton(
+                            tooltip: 'Remove entry',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => setDialogState(() => entries.removeAt(index)),
+                          ),
+                        ),
                       ),
+                    if (result.unrecognizedLines.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      for (final entry in result.entries)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_today_outlined, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text('${_date(entry.date)}  •  ${entry.type}  •  ${entry.status}'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      if (result.unrecognizedLines.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          'Needs review',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text('OCR found leave-like text it could not safely match:'),
-                        const SizedBox(height: 6),
-                        for (final line in result.unrecognizedLines.take(10))
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text('• $line'),
-                          ),
-                        if (result.unrecognizedLines.length > 10)
-                          Text('…and ${result.unrecognizedLines.length - 10} more line${result.unrecognizedLines.length - 10 == 1 ? '' : 's'}'),
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: reviewedWarnings,
-                          onChanged: (value) => setDialogState(() => reviewedWarnings = value ?? false),
-                          title: const Text('I reviewed the unrecognized text'),
-                          controlAffinity: ListTileControlAffinity.leading,
-                        ),
-                      ],
+                      Text('Needs review', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      const Text('OCR found leave-like text it could not safely match:'),
+                      const SizedBox(height: 6),
+                      for (final line in result.unrecognizedLines.take(10))
+                        Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• $line')),
+                      if (result.unrecognizedLines.length > 10)
+                        Text('…and ${result.unrecognizedLines.length - 10} more line${result.unrecognizedLines.length - 10 == 1 ? '' : 's'}'),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: reviewedWarnings,
+                        onChanged: (value) => setDialogState(() => reviewedWarnings = value ?? false),
+                        title: const Text('I reviewed the unrecognized text'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: result.entries.isEmpty || !reviewedWarnings
-                      ? null
-                      : () => Navigator.of(context).pop(true),
-                  child: const Text('Save Leave'),
-                ),
-              ],
             ),
-          ),
-        ) ??
-        false;
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: entries.isEmpty || !reviewedWarnings
+                    ? null
+                    : () => Navigator.of(context).pop(List<UpcomingLeaveEntry>.from(entries)),
+                child: const Text('Save Leave'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _importScreenshots() async {
@@ -158,14 +225,15 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       final result = await _importer.importFiles(images.map((e) => e.path).toList());
       if (!mounted) return;
 
-      final save = await _reviewLeaveImport(result);
-      if (!mounted || !save) return;
+      final reviewedEntries = await _reviewLeaveImport(result);
+      if (!mounted || reviewedEntries == null) return;
+      reviewedEntries.sort((a, b) => a.date.compareTo(b.date));
 
       final now = DateTime.now();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
         _entriesKey,
-        result.entries
+        reviewedEntries
             .map((entry) => jsonEncode({
                   'date': entry.date.toIso8601String(),
                   'type': entry.type,
@@ -177,9 +245,9 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
 
       if (!mounted) return;
       setState(() {
-        _entries = result.entries;
+        _entries = reviewedEntries;
         _lastUpdated = now;
-        _message = 'Imported ${result.entries.length} leave entr${result.entries.length == 1 ? 'y' : 'ies'} from ${images.length} screenshot${images.length == 1 ? '' : 's'}.';
+        _message = 'Imported ${reviewedEntries.length} reviewed leave entr${reviewedEntries.length == 1 ? 'y' : 'ies'} from ${images.length} screenshot${images.length == 1 ? '' : 's'}.';
       });
     } catch (e) {
       if (!mounted) return;
