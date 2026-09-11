@@ -229,7 +229,9 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       _initialCurrentPeriodValue = options[currentIndex];
     }
 
-    final anchorIndex = options.indexOf(_initialCurrentPeriodValue);
+    final initialCurrentPeriodValue = _initialCurrentPeriodValue;
+    if (initialCurrentPeriodValue == null) return;
+    final anchorIndex = options.indexOf(initialCurrentPeriodValue);
     if (anchorIndex < 0) return;
 
     final beforeCount = _expectedPeriodValues.length;
@@ -272,10 +274,6 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
 
       final options = _metadataOptions(metadata);
       final selectedValue = (metadata['selectedValue'] ?? '').toString().trim();
-
-      // WMT can populate more future periods after a postback. Keep merging
-      // every newly observed option from the original current period forward
-      // instead of freezing the target list on the first page load.
       _mergeExpectedPayPeriods(metadata, options, selectedValue);
 
       if (_pendingPeriodValue != null && selectedValue != _pendingPeriodValue) {
@@ -308,9 +306,6 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       }
 
       if (nextValue == null) {
-        // Do not finish immediately. WMT occasionally exposes additional
-        // future pay periods shortly after a postback. Require two stable
-        // verification passes with no newly discovered periods first.
         _completionVerificationPasses++;
         _collectingPayPeriods = false;
         if (_completionVerificationPasses >= 2) {
