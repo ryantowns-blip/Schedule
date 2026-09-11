@@ -17,7 +17,6 @@ class _OcrItem {
   final double left, top, right, bottom;
   double get centerX => (left + right) / 2;
   double get centerY => (top + bottom) / 2;
-  double get width => (right - left).abs();
 }
 
 class ScreenshotScheduleImporter {
@@ -34,18 +33,27 @@ class ScreenshotScheduleImporter {
         final recognized = await recognizer.processImage(InputImage.fromFilePath(path));
         raw.writeln(recognized.text);
         final spatial = _parseSpatialTable(recognized);
+        final textParsed = parseRecognizedText(recognized.text);
+
+        // Spatial parsing is preferred for the WMT 7-column table. Merge in
+        // text-only results only for dates the grid did not recover.
         if (spatial.isNotEmpty) {
-          allShifts.addAll(spatial);
-          unrecognized.addAll(_spatialUnrecognized(recognized, spatial));
+          final byDay = <String, DatedShift>{for (final s in spatial) _dateKey(s.date): s};
+          for (final s in textParsed.$1) {
+            byDay.putIfAbsent(_dateKey(s.date), () => s);
+          }
+          final merged = byDay.values.toList();
+          allShifts.addAll(merged);
+          unrecognized.addAll(_spatialUnrecognized(recognized, merged));
+          unrecognized.addAll(textParsed.$2);
         } else {
-          final parsed = parseRecognizedText(recognized.text);
-          allShifts.addAll(parsed.$1);
-          unrecognized.addAll(parsed.$2);
+          allShifts.addAll(textParsed.$1);
+          unrecognized.addAll(textParsed.$2);
         }
       }
       final byDay = <String, DatedShift>{};
       for (final shift in allShifts) {
-        byDay['${shift.date.year}-${shift.date.month}-${shift.date.day}'] = shift;
+        byDay[_dateKey(shift.date)] = shift;
       }
       final shifts = byDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
       return ScreenshotImportResult(shifts: shifts, unrecognizedLines: unrecognized.toSet().toList(), rawText: raw.toString().trim());
@@ -71,34 +79,76 @@ class ScreenshotScheduleImporter {
     }
     if (dates.length < 2 || shifts.isEmpty) return const [];
 
-    final xs = dates.map((e) => e.$1.centerX).toList()..sort();
-    final gaps = <double>[];
-    for (var i = 1; i < xs.length; i++) {
-      final gap = xs[i] - xs[i - 1];
-      if (gap > 8) gaps.add(gap);
-    }
-    gaps.sort();
-    final inferredColumnWidth = gaps.isEmpty ? 80.0 : gaps[gaps.length ~/ 2];
-    final horizontalTolerance = inferredColumnWidth * 0.48;
+    // WMT pay periods always start on Sunday and contain two 7-day rows.
+    // Recover the Sunday anchor from any OCR-recognized date. This avoids
+    // pairing a shift with an arbitrary nearby date when OCR misses cells.
+    final anchors = dates.map((entry) {
+      final d = entry.$2;
+      final daysSinceSunday = d.weekday % 7;
+      return DateTime(d.year, d.month, d.day).subtract(Duration(days: daysSinceSunday));
+    }).toList()..sort();
+    final start = anchors.first;
 
-    final result = <DatedShift>[];
-    for (final shiftEntry in shifts) {
-      final shiftItem = shiftEntry.$1;
-      final candidates = dates.where((dateEntry) {
-        final dateItem = dateEntry.$1;
-        return shiftItem.centerY > dateItem.centerY &&
-            (shiftItem.centerX - dateItem.centerX).abs() <= horizontalTolerance;
-      }).toList();
-      if (candidates.isEmpty) continue;
-      candidates.sort((a, b) {
-        final ay = shiftItem.centerY - a.$1.centerY;
-        final by = shiftItem.centerY - b.$1.centerY;
-        if ((ay - by).abs() > 4) return ay.compareTo(by);
-        return (shiftItem.centerX - a.$1.centerX).abs().compareTo((shiftItem.centerX - b.$1.centerX).abs());
-      });
-      result.add(DatedShift(date: candidates.first.$2, shift: shiftEntry.$2));
+    // Fit the seven column centers from date positions + known weekdays.
+    final xSamples = <(int, double)>[];
+    final rowYSamples = <int, List<double>>{0: <double>[], 1: <double>[]};
+    for (final entry in dates) {
+      final dayOffset = DateTime(entry.$2.year, entry.$2.month, entry.$2.day).difference(start).inDays;
+      if (dayOffset < 0 || dayOffset > 13) continue;
+      final column = dayOffset % 7;
+      final row = dayOffset ~/ 7;
+      xSamples.add((column, entry.$1.centerX));
+      rowYSamples[row]!.add(entry.$1.centerY);
     }
-    return result;
+    if (xSamples.length < 2) return const [];
+
+    final meanCol = xSamples.map((e) => e.$1.toDouble()).reduce((a, b) => a + b) / xSamples.length;
+    final meanX = xSamples.map((e) => e.$2).reduce((a, b) => a + b) / xSamples.length;
+    var numerator = 0.0;
+    var denominator = 0.0;
+    for (final sample in xSamples) {
+      final dc = sample.$1 - meanCol;
+      numerator += dc * (sample.$2 - meanX);
+      denominator += dc * dc;
+    }
+    if (denominator == 0) return const [];
+    final columnSpacing = numerator / denominator;
+    if (columnSpacing.abs() < 20) return const [];
+    final firstColumnX = meanX - columnSpacing * meanCol;
+
+    double? mean(List<double> values) => values.isEmpty ? null : values.reduce((a, b) => a + b) / values.length;
+    var row0Y = mean(rowYSamples[0]!);
+    var row1Y = mean(rowYSamples[1]!);
+    if (row0Y == null && row1Y == null) return const [];
+    // If OCR only found dates in one row, infer the other row from the shift
+    // bands. The WMT rows are adjacent and have very similar cell heights.
+    if (row0Y == null) row0Y = row1Y! - 55;
+    if (row1Y == null) row1Y = row0Y + 55;
+    final rowBoundary = (row0Y + row1Y) / 2;
+
+    final resultByDay = <String, DatedShift>{};
+    for (final shiftEntry in shifts) {
+      final item = shiftEntry.$1;
+      final rawColumn = (item.centerX - firstColumnX) / columnSpacing;
+      final column = rawColumn.round();
+      if (column < 0 || column > 6 || (rawColumn - column).abs() > 0.48) continue;
+
+      final row = item.centerY < rowBoundary ? 0 : 1;
+      final date = start.add(Duration(days: row * 7 + column));
+
+      // A shift should sit below its row's date text and not wander into a
+      // neighboring table/header/footer region.
+      final dateRowY = row == 0 ? row0Y : row1Y;
+      final verticalGap = item.centerY - dateRowY;
+      if (verticalGap < 3 || verticalGap > 65) continue;
+
+      final key = _dateKey(date);
+      final existing = resultByDay[key];
+      if (existing == null) {
+        resultByDay[key] = DatedShift(date: date, shift: shiftEntry.$2);
+      }
+    }
+    return resultByDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
   List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {
@@ -112,30 +162,21 @@ class ScreenshotScheduleImporter {
         for (final element in line.elements) {
           final text = element.text.trim();
           if (text.isEmpty) continue;
-
           final date = _findDate(text);
           if (date != null) {
             recognizedDates[_dateKey(date)] = date;
             continue;
           }
-
           final shift = _findShift(text);
-          if (shift != null && !parsedRaw.contains(shift.raw.toUpperCase())) {
-            unresolved.add(text);
-          }
+          if (shift != null && !parsedRaw.contains(shift.raw.toUpperCase())) unresolved.add(text);
         }
       }
     }
 
-    final missingDates = recognizedDates.entries
-        .where((entry) => !parsedDates.contains(entry.key))
-        .map((entry) => entry.value)
-        .toList()
-      ..sort();
+    final missingDates = recognizedDates.entries.where((entry) => !parsedDates.contains(entry.key)).map((entry) => entry.value).toList()..sort();
     for (final date in missingDates) {
       unresolved.add('No shift recognized for ${date.month}/${date.day}/${date.year}');
     }
-
     return unresolved.toSet().toList();
   }
 
@@ -178,10 +219,7 @@ class ScreenshotScheduleImporter {
   }
 
   ParsedShift? _findShift(String line) {
-    final normalized = line
-        .replaceAll('O', '0').replaceAll('o', '0')
-        .replaceAll('Š', 'S').replaceAll('š', 's')
-        .replaceAll('—', '-').replaceAll('–', '-');
+    final normalized = line.replaceAll('O', '0').replaceAll('o', '0').replaceAll('Š', 'S').replaceAll('š', 's').replaceAll('—', '-').replaceAll('–', '-');
     final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
     if (annual != null) {
       final parsed = _tryParse('A<${annual.group(1)}>');
