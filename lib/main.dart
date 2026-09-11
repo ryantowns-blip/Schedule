@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'models/dated_shift.dart';
 import 'models/schedule_display_settings.dart';
 import 'screens/calendar_sync_page.dart';
 import 'screens/pay_period_schedule_view.dart';
@@ -8,7 +9,6 @@ import 'screens/screenshot_import_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/upcoming_leave_page.dart';
 import 'services/schedule_parser.dart';
-import 'services/wmt_schedule_extractor.dart';
 
 void main() => runApp(const AtcScheduleManagerApp());
 
