@@ -37,14 +37,17 @@ jobs:
       - name: Configure Android app
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
+          BUILD_FILE=android/app/build.gradle.kts
           if ! grep -q 'READ_CALENDAR' "$MANIFEST"; then
             sed -i '/<manifest/a\    <uses-permission android:name="android.permission.READ_CALENDAR" />\n    <uses-permission android:name="android.permission.WRITE_CALENDAR" />' "$MANIFEST"
           fi
-          if grep -q 'minSdk = flutter.minSdkVersion' android/app/build.gradle.kts; then
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' android/app/build.gradle.kts
+          if grep -q 'minSdk = flutter.minSdkVersion' "$BUILD_FILE"; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
           fi
-          sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager"/' "$MANIFEST"
-          grep -q 'android:label="ATC Schedule Manager"' "$MANIFEST"
+          sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager Lite"/' "$MANIFEST"
+          sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
+          grep -q 'android:label="ATC Schedule Manager Lite"' "$MANIFEST"
+          grep -q 'applicationId = "com.ryantowns.atcschedulemanager.lite"' "$BUILD_FILE"
 
       - name: Get dependencies
         run: flutter pub get
@@ -58,5 +61,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: atc-schedule-manager-screenshot-import-debug-apk
+          name: atc-schedule-manager-lite-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
