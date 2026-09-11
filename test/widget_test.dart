@@ -15,5 +15,6 @@ void main() {
     expect(find.text('ATC Schedule Manager'), findsOneWidget);
     expect(find.text('No schedule imported yet'), findsOneWidget);
     expect(find.text('Import Schedule Screenshots'), findsOneWidget);
+    expect(find.text('Upcoming Leave'), findsOneWidget);
   });
 }
