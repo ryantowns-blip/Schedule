@@ -17,6 +17,14 @@ class _OcrItem {
   final double left, top, right, bottom;
   double get centerX => (left + right) / 2;
   double get centerY => (top + bottom) / 2;
+  double get width => right - left;
+}
+
+class _ShiftCandidate {
+  const _ShiftCandidate(this.item, this.shift, {required this.fromLine});
+  final _OcrItem item;
+  final ParsedShift shift;
+  final bool fromLine;
 }
 
 class ScreenshotScheduleImporter {
@@ -34,11 +42,9 @@ class ScreenshotScheduleImporter {
         raw.writeln(recognized.text);
         final spatial = _parseSpatialTable(recognized);
 
-        // Once a WMT grid is found, its geometry is authoritative. Do not
-        // merge the plain-text parser here: ML Kit often returns WMT table text
-        // in a non-cell reading order, which can pair a valid shift with the
-        // wrong date. The text parser remains a fallback only when no usable
-        // table geometry can be reconstructed.
+        // Once a WMT grid is found, its geometry is authoritative. ML Kit can
+        // emit table text in a misleading reading order, so plain-text pairing
+        // is only used if no usable WMT table can be reconstructed at all.
         if (spatial.isNotEmpty) {
           allShifts.addAll(spatial);
           unrecognized.addAll(_spatialUnrecognized(recognized, spatial));
@@ -53,7 +59,11 @@ class ScreenshotScheduleImporter {
         byDay[_dateKey(shift.date)] = shift;
       }
       final shifts = byDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
-      return ScreenshotImportResult(shifts: shifts, unrecognizedLines: unrecognized.toSet().toList(), rawText: raw.toString().trim());
+      return ScreenshotImportResult(
+        shifts: shifts,
+        unrecognizedLines: unrecognized.toSet().toList(),
+        rawText: raw.toString().trim(),
+      );
     } finally {
       await recognizer.close();
     }
@@ -61,139 +71,186 @@ class ScreenshotScheduleImporter {
 
   List<DatedShift> _parseSpatialTable(RecognizedText recognized) {
     final dates = <(_OcrItem, DateTime)>[];
-    final shifts = <(_OcrItem, ParsedShift)>[];
+    final candidates = <_ShiftCandidate>[];
+
     for (final block in recognized.blocks) {
       for (final line in block.lines) {
+        final lineBox = line.boundingBox;
+        final lineItem = _OcrItem(
+          line.text.trim(),
+          lineBox.left,
+          lineBox.top,
+          lineBox.right,
+          lineBox.bottom,
+        );
+        final lineShift = _findShift(lineItem.text);
+        if (lineShift != null) {
+          candidates.add(_ShiftCandidate(lineItem, lineShift, fromLine: true));
+        }
+
         for (final element in line.elements) {
           final box = element.boundingBox;
           final item = _OcrItem(element.text.trim(), box.left, box.top, box.right, box.bottom);
           final date = _findDate(item.text);
           if (date != null) dates.add((item, date));
           final shift = _findShift(item.text);
-          if (shift != null) shifts.add((item, shift));
-        }
-      }
-    }
-    if (dates.length < 2 || shifts.isEmpty) return const [];
-
-    // WMT pay periods always start on Sunday and contain two 7-day rows.
-    // Screenshots may also contain unrelated page dates such as "Today's
-    // date: 09/11/2026". Choose the Sunday anchor supported by the largest
-    // number of OCR-recognized dates rather than simply taking the earliest
-    // date on the page.
-    final anchorCounts = <String, (DateTime, int)>{};
-    for (final entry in dates) {
-      final d = entry.$2;
-      final daysSinceSunday = d.weekday % 7;
-      final anchor = DateTime(d.year, d.month, d.day).subtract(Duration(days: daysSinceSunday));
-      final key = _dateKey(anchor);
-      final existing = anchorCounts[key];
-      anchorCounts[key] = (anchor, (existing?.$2 ?? 0) + 1);
-    }
-    if (anchorCounts.isEmpty) return const [];
-    final rankedAnchors = anchorCounts.values.toList()
-      ..sort((a, b) {
-        final byCount = b.$2.compareTo(a.$2);
-        if (byCount != 0) return byCount;
-        return a.$1.compareTo(b.$1);
-      });
-    final start = rankedAnchors.first.$1;
-
-    // Only dates inside this 14-day pay period participate in geometry.
-    final tableDates = dates.where((entry) {
-      final d = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
-      final offset = d.difference(start).inDays;
-      return offset >= 0 && offset <= 13;
-    }).toList();
-    if (tableDates.length < 2) return const [];
-
-    // Fit seven column centers from the actual WMT dates. The date itself tells
-    // us the weekday/column, so OCR reading order is irrelevant.
-    final xSamples = <(int, double)>[];
-    final rowYSamples = <int, List<double>>{0: <double>[], 1: <double>[]};
-    for (final entry in tableDates) {
-      final dayOffset = DateTime(entry.$2.year, entry.$2.month, entry.$2.day).difference(start).inDays;
-      final column = dayOffset % 7;
-      final row = dayOffset ~/ 7;
-      xSamples.add((column, entry.$1.centerX));
-      rowYSamples[row]!.add(entry.$1.centerY);
-    }
-    if (xSamples.length < 2) return const [];
-
-    final meanCol = xSamples.map((e) => e.$1.toDouble()).reduce((a, b) => a + b) / xSamples.length;
-    final meanX = xSamples.map((e) => e.$2).reduce((a, b) => a + b) / xSamples.length;
-    var numerator = 0.0;
-    var denominator = 0.0;
-    for (final sample in xSamples) {
-      final dc = sample.$1 - meanCol;
-      numerator += dc * (sample.$2 - meanX);
-      denominator += dc * dc;
-    }
-    if (denominator == 0) return const [];
-    final columnSpacing = numerator / denominator;
-    if (columnSpacing.abs() < 20) return const [];
-    final firstColumnX = meanX - columnSpacing * meanCol;
-
-    double? mean(List<double> values) => values.isEmpty ? null : values.reduce((a, b) => a + b) / values.length;
-    var row0Y = mean(rowYSamples[0]!);
-    var row1Y = mean(rowYSamples[1]!);
-    if (row0Y == null && row1Y == null) return const [];
-    if (row0Y == null) row0Y = row1Y! - 55;
-    if (row1Y == null) row1Y = row0Y + 55;
-    final rowBoundary = (row0Y + row1Y) / 2;
-
-    final resultByDay = <String, DatedShift>{};
-    for (final shiftEntry in shifts) {
-      final item = shiftEntry.$1;
-      final rawColumn = (item.centerX - firstColumnX) / columnSpacing;
-      final column = rawColumn.round();
-      if (column < 0 || column > 6 || (rawColumn - column).abs() > 0.48) continue;
-
-      final row = item.centerY < rowBoundary ? 0 : 1;
-      final date = start.add(Duration(days: row * 7 + column));
-      final dateRowY = row == 0 ? row0Y : row1Y;
-      final verticalGap = item.centerY - dateRowY;
-      if (verticalGap < 3 || verticalGap > 65) continue;
-
-      final key = _dateKey(date);
-      resultByDay.putIfAbsent(key, () => DatedShift(date: date, shift: shiftEntry.$2));
-    }
-    return resultByDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
-  }
-
-  List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {
-    final parsedDates = parsed.map((e) => _dateKey(e.date)).toSet();
-    final unresolved = <String>[];
-    final recognizedDates = <String, DateTime>{};
-
-    for (final block in recognized.blocks) {
-      for (final line in block.lines) {
-        for (final element in line.elements) {
-          final text = element.text.trim();
-          if (text.isEmpty) continue;
-          final date = _findDate(text);
-          if (date != null) {
-            recognizedDates[_dateKey(date)] = date;
+          if (shift != null) {
+            candidates.add(_ShiftCandidate(item, shift, fromLine: false));
           }
         }
       }
     }
+    if (dates.length < 4 || candidates.isEmpty) return const [];
 
-    // For a reconstructed grid, the useful review signal is a missing day,
-    // not every valid shift token that ML Kit happened to emit separately.
-    // This keeps valid codes such as X, HL, 0500L$, etc. out of Needs Review.
-    if (parsed.isNotEmpty) {
-      final parsedDays = parsed.map((e) => DateTime(e.date.year, e.date.month, e.date.day)).toList()..sort();
-      final start = parsedDays.first.subtract(Duration(days: parsedDays.first.weekday % 7));
-      for (var offset = 0; offset < 14; offset++) {
-        final d = start.add(Duration(days: offset));
-        final key = _dateKey(d);
-        if (recognizedDates.containsKey(key) && !parsedDates.contains(key)) {
-          unresolved.add('No shift recognized for ${d.month}/${d.day}/${d.year}');
-        }
+    // Every WMT pay period is two consecutive Sunday-Saturday rows. Each week
+    // creates its own Sunday anchor, so choose the earliest of the two strongest
+    // adjacent anchors. Unrelated page dates (for example "Today's date") have
+    // far less support and are ignored.
+    final weeklyCounts = <String, (DateTime, int)>{};
+    for (final entry in dates) {
+      final d = entry.$2;
+      final anchor = DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday % 7));
+      final key = _dateKey(anchor);
+      final old = weeklyCounts[key];
+      weeklyCounts[key] = (anchor, (old?.$2 ?? 0) + 1);
+    }
+    final weeks = weeklyCounts.values.toList()..sort((a, b) => a.$1.compareTo(b.$1));
+    DateTime? start;
+    var bestSupport = -1;
+    for (var i = 0; i < weeks.length; i++) {
+      final first = weeks[i];
+      var support = first.$2;
+      for (var j = 0; j < weeks.length; j++) {
+        if (weeks[j].$1.difference(first.$1).inDays == 7) support += weeks[j].$2;
+      }
+      if (support > bestSupport) {
+        bestSupport = support;
+        start = first.$1;
+      }
+    }
+    if (start == null || bestSupport < 4) return const [];
+
+    final tableDates = dates.where((entry) {
+      final d = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
+      final offset = d.difference(start!).inDays;
+      return offset >= 0 && offset <= 13;
+    }).toList();
+    if (tableDates.length < 4) return const [];
+
+    // Derive the seven physical column centers directly from the printed date
+    // positions. This is more stable than fitting one regression line and works
+    // across different screenshot zoom levels.
+    final byColumn = <int, List<double>>{for (var c = 0; c < 7; c++) c: <double>[]};
+    final rowDateYs = <int, List<double>>{0: <double>[], 1: <double>[]};
+    for (final entry in tableDates) {
+      final d = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
+      final offset = d.difference(start).inDays;
+      final row = offset ~/ 7;
+      final column = offset % 7;
+      byColumn[column]!.add(entry.$1.centerX);
+      rowDateYs[row]!.add(entry.$1.centerY);
+    }
+
+    final knownCenters = <int, double>{};
+    for (var c = 0; c < 7; c++) {
+      if (byColumn[c]!.isNotEmpty) knownCenters[c] = _median(byColumn[c]!);
+    }
+    if (knownCenters.length < 3) return const [];
+
+    final spacingSamples = <double>[];
+    final knownCols = knownCenters.keys.toList()..sort();
+    for (var i = 1; i < knownCols.length; i++) {
+      final leftCol = knownCols[i - 1];
+      final rightCol = knownCols[i];
+      spacingSamples.add((knownCenters[rightCol]! - knownCenters[leftCol]!) / (rightCol - leftCol));
+    }
+    if (spacingSamples.isEmpty) return const [];
+    final spacing = _median(spacingSamples);
+    if (spacing.abs() < 15) return const [];
+
+    final referenceCol = knownCols.first;
+    final referenceX = knownCenters[referenceCol]!;
+    final columnCenters = List<double>.generate(7, (c) {
+      if (knownCenters.containsKey(c)) return knownCenters[c]!;
+      return referenceX + (c - referenceCol) * spacing;
+    });
+
+    if (rowDateYs[0]!.isEmpty || rowDateYs[1]!.isEmpty) return const [];
+    final row0Y = _median(rowDateYs[0]!);
+    final row1Y = _median(rowDateYs[1]!);
+    final rowHeight = row1Y - row0Y;
+    if (rowHeight.abs() < 12) return const [];
+
+    // WMT shift text lives below each date inside the same cell. Use the next
+    // row's date as the natural bottom edge of row 1, and one row-height beyond
+    // row 2. This avoids hard-coded pixel gaps.
+    final row0Top = row0Y - rowHeight * 0.05;
+    final row0Bottom = row1Y - rowHeight * 0.05;
+    final row1Top = row1Y - rowHeight * 0.05;
+    final row1Bottom = row1Y + rowHeight * 0.95;
+
+    final result = <DatedShift>[];
+    for (var offset = 0; offset < 14; offset++) {
+      final row = offset ~/ 7;
+      final column = offset % 7;
+      final targetX = columnCenters[column];
+      final xHalfWidth = spacing.abs() * 0.48;
+      final top = row == 0 ? row0Top : row1Top;
+      final bottom = row == 0 ? row0Bottom : row1Bottom;
+
+      final inCell = candidates.where((candidate) {
+        final item = candidate.item;
+        if (item.centerX < targetX - xHalfWidth || item.centerX > targetX + xHalfWidth) return false;
+        if (item.centerY < top || item.centerY > bottom) return false;
+        // A full OCR line that spans several WMT cells is not a trustworthy
+        // single-cell candidate. Element candidates are always allowed.
+        if (candidate.fromLine && item.width > spacing.abs() * 1.35) return false;
+        return true;
+      }).toList();
+
+      if (inCell.isEmpty) continue;
+
+      // Prefer the candidate closest to the cell's column center, then prefer
+      // element-level OCR over a wider line-level fallback when tied.
+      inCell.sort((a, b) {
+        final ax = (a.item.centerX - targetX).abs();
+        final bx = (b.item.centerX - targetX).abs();
+        final byX = ax.compareTo(bx);
+        if (byX != 0) return byX;
+        if (a.fromLine != b.fromLine) return a.fromLine ? 1 : -1;
+        return a.item.centerY.compareTo(b.item.centerY);
+      });
+
+      final date = start.add(Duration(days: offset));
+      result.add(DatedShift(date: date, shift: inCell.first.shift));
+    }
+
+    return result..sort((a, b) => a.date.compareTo(b.date));
+  }
+
+  List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {
+    if (parsed.isEmpty) return const [];
+    final parsedDates = parsed.map((e) => _dateKey(e.date)).toSet();
+    final parsedDays = parsed.map((e) => DateTime(e.date.year, e.date.month, e.date.day)).toList()..sort();
+    final start = parsedDays.first.subtract(Duration(days: parsedDays.first.weekday % 7));
+    final unresolved = <String>[];
+
+    // A reconstructed WMT grid should report only genuinely missing cells.
+    // Valid standalone OCR tokens and page labels are not useful review items.
+    for (var offset = 0; offset < 14; offset++) {
+      final date = start.add(Duration(days: offset));
+      if (!parsedDates.contains(_dateKey(date))) {
+        unresolved.add('No shift recognized for ${date.month}/${date.day}/${date.year}');
       }
     }
     return unresolved;
+  }
+
+  double _median(List<double> values) {
+    final sorted = List<double>.from(values)..sort();
+    final middle = sorted.length ~/ 2;
+    if (sorted.length.isOdd) return sorted[middle];
+    return (sorted[middle - 1] + sorted[middle]) / 2;
   }
 
   String _dateKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
@@ -235,7 +292,13 @@ class ScreenshotScheduleImporter {
   }
 
   ParsedShift? _findShift(String line) {
-    final normalized = line.replaceAll('O', '0').replaceAll('o', '0').replaceAll('Š', 'S').replaceAll('š', 's').replaceAll('—', '-').replaceAll('–', '-');
+    final normalized = line
+        .replaceAll('O', '0')
+        .replaceAll('o', '0')
+        .replaceAll('Š', 'S')
+        .replaceAll('š', 's')
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
     final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
     if (annual != null) {
       final parsed = _tryParse('A<${annual.group(1)}>');
@@ -252,8 +315,17 @@ class ScreenshotScheduleImporter {
   ParsedShift? _tryParse(String token) {
     if (token.isEmpty) return null;
     final fixed = _repairCommonOcr(token);
-    if (!RegExp(r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$', caseSensitive: false).hasMatch(fixed)) return null;
-    try { return parser.parse(fixed); } catch (_) { return null; }
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
   }
 
   String _repairCommonOcr(String token) {
@@ -262,5 +334,6 @@ class ScreenshotScheduleImporter {
     return value;
   }
 
-  bool _looksScheduleLike(String line) => RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
 }
