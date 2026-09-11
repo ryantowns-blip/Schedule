@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/dated_shift.dart';
+import '../services/pdf_schedule_import_service.dart';
 import '../services/schedule_parser.dart';
 import '../services/screenshot_schedule_importer.dart';
 
@@ -27,8 +31,13 @@ class ScreenshotImportPage extends StatefulWidget {
 class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
   final _picker = ImagePicker();
   final _importer = const ScreenshotScheduleImporter();
+  final _pdfRenderer = const PdfScheduleImportService();
   final _parser = const ScheduleParser();
+
   List<XFile> _images = const [];
+  List<String> _analysisPaths = const [];
+  List<String> _temporaryPdfImages = const [];
+  String? _pdfFileName;
   ScreenshotImportResult? _result;
   List<DatedShift> _reviewedShifts = const [];
   bool _busy = false;
@@ -36,27 +45,97 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
   bool _deleteSourceScreenshots = false;
   String? _error;
 
+  bool get _usingPdf => _pdfFileName != null;
+
+  @override
+  void dispose() {
+    if (_temporaryPdfImages.isNotEmpty) {
+      unawaited(_pdfRenderer.deleteTemporaryImages(_temporaryPdfImages));
+    }
+    super.dispose();
+  }
+
+  Future<void> _clearTemporaryPdfImages() async {
+    final paths = _temporaryPdfImages;
+    _temporaryPdfImages = const [];
+    if (paths.isNotEmpty) await _pdfRenderer.deleteTemporaryImages(paths);
+  }
+
+  void _resetReviewState() {
+    _result = null;
+    _reviewedShifts = const [];
+    _reviewedWarnings = false;
+    _deleteSourceScreenshots = false;
+    _error = null;
+  }
+
   Future<void> _pickScreenshots() async {
     final images = await _picker.pickMultiImage();
     if (images.isEmpty) return;
+    await _clearTemporaryPdfImages();
+    if (!mounted) return;
     setState(() {
       _images = images;
-      _result = null;
-      _reviewedShifts = const [];
-      _reviewedWarnings = false;
-      _error = null;
+      _analysisPaths = images.map((e) => e.path).toList();
+      _pdfFileName = null;
+      _resetReviewState();
     });
     await _analyze();
   }
 
+  Future<void> _pickPdf() async {
+    if (_busy) return;
+    final selected = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      allowMultiple: false,
+    );
+    if (selected == null || selected.files.isEmpty) return;
+    final file = selected.files.single;
+    final path = file.path;
+    if (path == null || path.isEmpty) {
+      setState(() => _error = 'The selected PDF could not be opened from this device.');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+      _result = null;
+      _reviewedShifts = const [];
+      _reviewedWarnings = false;
+    });
+
+    try {
+      await _clearTemporaryPdfImages();
+      final renderedPages = await _pdfRenderer.renderToTemporaryImages(path);
+      if (!mounted) return;
+      setState(() {
+        _images = const [];
+        _analysisPaths = renderedPages;
+        _temporaryPdfImages = renderedPages;
+        _pdfFileName = file.name;
+        _deleteSourceScreenshots = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not prepare the selected PDF: $e');
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+
+    await _analyze();
+  }
+
   Future<void> _analyze() async {
-    if (_images.isEmpty || _busy) return;
+    if (_analysisPaths.isEmpty || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await _importer.importFiles(_images.map((e) => e.path).toList());
+      final result = await _importer.importFiles(_analysisPaths);
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -65,7 +144,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Could not read the selected screenshots: $e');
+      setState(() => _error = 'Could not read the selected ${_usingPdf ? 'PDF' : 'screenshots'}: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -96,9 +175,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                     firstDate: DateTime(selectedDate.year - 1),
                     lastDate: DateTime(selectedDate.year + 2),
                   );
-                  if (picked != null) {
-                    setDialogState(() => selectedDate = picked);
-                  }
+                  if (picked != null) setDialogState(() => selectedDate = picked);
                 },
                 icon: const Icon(Icons.calendar_today_outlined),
                 label: Text(_date(selectedDate)),
@@ -119,10 +196,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 try {
@@ -156,14 +230,15 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
     });
   }
 
-  void _finishImport() {
-    Navigator.of(context).pop(
-      ScheduleScreenshotReviewResult(
-        shifts: List<DatedShift>.from(_reviewedShifts),
-        sourceImages: List<XFile>.from(_images),
-        deleteSourceImages: _deleteSourceScreenshots,
-      ),
+  Future<void> _finishImport() async {
+    final result = ScheduleScreenshotReviewResult(
+      shifts: List<DatedShift>.from(_reviewedShifts),
+      sourceImages: List<XFile>.from(_images),
+      deleteSourceImages: !_usingPdf && _deleteSourceScreenshots,
     );
+    await _clearTemporaryPdfImages();
+    if (!mounted) return;
+    Navigator.of(context).pop(result);
   }
 
   @override
@@ -172,29 +247,44 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
     final canImport = _reviewedShifts.isNotEmpty && (unresolved.isEmpty || _reviewedWarnings);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Import Schedule Screenshots')),
+      appBar: AppBar(title: const Text('Import Schedule')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             const Text(
-              'Select one or more screenshots of your schedule. The images are read on this device and are not uploaded by ATC Schedule Manager Lite.',
+              'Screenshots are the fastest option. Select one or more schedule screenshots and Lite will read them locally on this device.',
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: _busy ? null : _pickScreenshots,
               icon: const Icon(Icons.photo_library_outlined),
-              label: Text(_images.isEmpty ? 'Select Screenshots' : 'Choose Different Screenshots'),
+              label: Text(_images.isEmpty ? 'Import Screenshots' : 'Choose Different Screenshots'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _pickPdf,
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: Text(_usingPdf ? 'Choose Different PDF' : 'Import PDF'),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'PDF is optional. A WMT Print/Save as PDF file is rendered locally and sent through the same review process.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             if (_images.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text('${_images.length} screenshot${_images.length == 1 ? '' : 's'} selected'),
             ],
+            if (_usingPdf) ...[
+              const SizedBox(height: 10),
+              Text('PDF selected: $_pdfFileName (${_analysisPaths.length} page${_analysisPaths.length == 1 ? '' : 's'})'),
+            ],
             if (_busy) ...[
               const SizedBox(height: 24),
               const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 10),
-              const Text('Reading screenshots…', textAlign: TextAlign.center),
+              Text(_usingPdf ? 'Reading PDF…' : 'Reading screenshots…', textAlign: TextAlign.center),
             ],
             if (_error != null) ...[
               const SizedBox(height: 14),
@@ -236,16 +326,8 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                     trailing: Wrap(
                       spacing: 2,
                       children: [
-                        IconButton(
-                          tooltip: 'Edit',
-                          onPressed: () => _editEntry(i),
-                          icon: const Icon(Icons.edit_outlined),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove',
-                          onPressed: () => _removeEntry(i),
-                          icon: const Icon(Icons.delete_outline),
-                        ),
+                        IconButton(tooltip: 'Edit', onPressed: () => _editEntry(i), icon: const Icon(Icons.edit_outlined)),
+                        IconButton(tooltip: 'Remove', onPressed: () => _removeEntry(i), icon: const Icon(Icons.delete_outline)),
                       ],
                     ),
                   ),
@@ -280,19 +362,21 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
               ],
-              const SizedBox(height: 8),
-              Card(
-                child: CheckboxListTile(
-                  value: _deleteSourceScreenshots,
-                  onChanged: (value) => setState(() => _deleteSourceScreenshots = value ?? false),
-                  title: const Text('Delete source screenshots after import'),
-                  subtitle: const Text(
-                    'Optional. After the schedule is saved, Lite will request photo-library access and the phone may ask you to confirm deletion. Images are deleted only when filename and file size uniquely match the screenshots you selected.',
+              if (!_usingPdf) ...[
+                const SizedBox(height: 8),
+                Card(
+                  child: CheckboxListTile(
+                    value: _deleteSourceScreenshots,
+                    onChanged: (value) => setState(() => _deleteSourceScreenshots = value ?? false),
+                    title: const Text('Delete source screenshots after import'),
+                    subtitle: const Text(
+                      'Optional. After the schedule is saved, Lite will request photo-library access and the phone may ask you to confirm deletion. Images are deleted only when filename and file size uniquely match the screenshots you selected.',
+                    ),
+                    secondary: const Icon(Icons.delete_sweep_outlined),
+                    controlAffinity: ListTileControlAffinity.leading,
                   ),
-                  secondary: const Icon(Icons.delete_sweep_outlined),
-                  controlAffinity: ListTileControlAffinity.leading,
                 ),
-              ),
+              ],
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: canImport ? _finishImport : null,
@@ -301,8 +385,8 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
               ),
               if (_reviewedShifts.isEmpty) ...[
                 const SizedBox(height: 8),
-                const Text(
-                  'No valid schedule entries were recognized. Try screenshots that clearly show both the dates and shift codes.',
+                Text(
+                  'No valid schedule entries were recognized. Try ${_usingPdf ? 'a WMT Print/Save as PDF file or clear screenshots' : 'screenshots that clearly show both the dates and shift codes'}.',
                   textAlign: TextAlign.center,
                 ),
               ],
