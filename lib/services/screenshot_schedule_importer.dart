@@ -71,12 +71,6 @@ class ScreenshotScheduleImporter {
     }
     if (dates.length < 2 || shifts.isEmpty) return const [];
 
-    // The earlier implementation limited vertical distance using the printed
-    // date's width. Real WMT screenshots vary enough in zoom/font size that
-    // this rejected valid cells. Instead infer the seven-column spacing from
-    // neighboring date centers and pair each shift with the nearest date above
-    // it in the same column. The nearest-above rule naturally selects Week 2
-    // over Week 1 when the x coordinate repeats.
     final xs = dates.map((e) => e.$1.centerX).toList()..sort();
     final gaps = <double>[];
     for (var i = 1; i < xs.length; i++) {
@@ -109,19 +103,43 @@ class ScreenshotScheduleImporter {
 
   List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {
     final parsedRaw = parsed.map((e) => e.shift.raw.toUpperCase()).toSet();
+    final parsedDates = parsed.map((e) => _dateKey(e.date)).toSet();
     final unresolved = <String>[];
+    final recognizedDates = <String, DateTime>{};
+
     for (final block in recognized.blocks) {
       for (final line in block.lines) {
         for (final element in line.elements) {
           final text = element.text.trim();
-          if (text.isEmpty || _findDate(text) != null) continue;
+          if (text.isEmpty) continue;
+
+          final date = _findDate(text);
+          if (date != null) {
+            recognizedDates[_dateKey(date)] = date;
+            continue;
+          }
+
           final shift = _findShift(text);
-          if (shift != null && !parsedRaw.contains(shift.raw.toUpperCase())) unresolved.add(text);
+          if (shift != null && !parsedRaw.contains(shift.raw.toUpperCase())) {
+            unresolved.add(text);
+          }
         }
       }
     }
+
+    final missingDates = recognizedDates.entries
+        .where((entry) => !parsedDates.contains(entry.key))
+        .map((entry) => entry.value)
+        .toList()
+      ..sort();
+    for (final date in missingDates) {
+      unresolved.add('No shift recognized for ${date.month}/${date.day}/${date.year}');
+    }
+
     return unresolved.toSet().toList();
   }
+
+  String _dateKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
 
   (List<DatedShift>, List<String>) parseRecognizedText(String text) {
     final shifts = <DatedShift>[];
