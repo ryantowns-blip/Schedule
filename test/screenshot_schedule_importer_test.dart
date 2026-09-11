@@ -27,6 +27,12 @@ void main() {
     expect(result.$1.single.shift.startMinutes, 5 * 60);
   });
 
+  test('repairs accented S suffix from real WMT OCR', () {
+    final result = importer.parseRecognizedText('9/16/2026 1300LŠ');
+    expect(result.$1, hasLength(1));
+    expect(result.$1.single.shift.raw.toUpperCase(), '1300LS');
+  });
+
   test('recognizes annual leave when OCR uses square brackets', () {
     final result = importer.parseRecognizedText('9/14/2026 A[0500]');
     expect(result.$1, hasLength(1));
