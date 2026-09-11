@@ -101,9 +101,10 @@ class ScreenshotLeaveImporter {
         continue;
       }
 
-      if (pendingDate != null && status != null) {
+      final resolvedPendingDate = pendingDate;
+      if (resolvedPendingDate != null && status != null) {
         entries.add(UpcomingLeaveEntry(
-          date: pendingDate,
+          date: resolvedPendingDate,
           type: type ?? pendingType ?? 'Annual',
           status: status,
         ));
