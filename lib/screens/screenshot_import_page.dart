@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../services/schedule_parser.dart';
 import '../services/screenshot_schedule_importer.dart';
 import '../services/wmt_schedule_extractor.dart';
 
@@ -14,9 +15,12 @@ class ScreenshotImportPage extends StatefulWidget {
 class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
   final _picker = ImagePicker();
   final _importer = const ScreenshotScheduleImporter();
+  final _parser = const ScheduleParser();
   List<XFile> _images = const [];
   ScreenshotImportResult? _result;
+  List<DatedShift> _reviewedShifts = const [];
   bool _busy = false;
+  bool _reviewedWarnings = false;
   String? _error;
 
   Future<void> _pickScreenshots() async {
@@ -25,6 +29,8 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
     setState(() {
       _images = images;
       _result = null;
+      _reviewedShifts = const [];
+      _reviewedWarnings = false;
       _error = null;
     });
     await _analyze();
@@ -39,7 +45,11 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
     try {
       final result = await _importer.importFiles(_images.map((e) => e.path).toList());
       if (!mounted) return;
-      setState(() => _result = result);
+      setState(() {
+        _result = result;
+        _reviewedShifts = List<DatedShift>.from(result.shifts);
+        _reviewedWarnings = result.unrecognizedLines.isEmpty;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'Could not read the selected screenshots: $e');
@@ -50,10 +60,101 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
 
   String _date(DateTime value) => '${value.month}/${value.day}/${value.year}';
 
+  Future<void> _editEntry(int index) async {
+    final current = _reviewedShifts[index];
+    var selectedDate = current.date;
+    final shiftController = TextEditingController(text: current.shift.raw);
+    String? validationError;
+
+    final updated = await showDialog<DatedShift>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Review Schedule Entry'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(selectedDate.year - 1),
+                    lastDate: DateTime(selectedDate.year + 2),
+                  );
+                  if (picked != null) {
+                    setDialogState(() => selectedDate = picked);
+                  }
+                },
+                icon: const Icon(Icons.calendar_today_outlined),
+                label: Text(_date(selectedDate)),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: shiftController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'Shift code',
+                  hintText: '0500L, X, HL, A<0500>',
+                  errorText: validationError,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'The shift must match a supported ATC Schedule Manager code before it can be saved.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                try {
+                  final parsed = _parser.parse(shiftController.text.trim());
+                  Navigator.of(context).pop(
+                    DatedShift(date: selectedDate, shift: parsed),
+                  );
+                } catch (_) {
+                  setDialogState(() {
+                    validationError = 'Shift code not recognized';
+                  });
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    shiftController.dispose();
+    if (updated == null || !mounted) return;
+    setState(() {
+      final copy = List<DatedShift>.from(_reviewedShifts);
+      copy[index] = updated;
+      copy.sort((a, b) => a.date.compareTo(b.date));
+      _reviewedShifts = copy;
+    });
+  }
+
+  void _removeEntry(int index) {
+    setState(() {
+      final copy = List<DatedShift>.from(_reviewedShifts)..removeAt(index);
+      _reviewedShifts = copy;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final shifts = _result?.shifts ?? const <DatedShift>[];
     final unresolved = _result?.unrecognizedLines ?? const <String>[];
+    final canImport = _reviewedShifts.isNotEmpty &&
+        (unresolved.isEmpty || _reviewedWarnings);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Import Schedule Screenshots')),
       body: SafeArea(
@@ -99,7 +200,7 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '${shifts.length} schedule entr${shifts.length == 1 ? 'y' : 'ies'} recognized${unresolved.isEmpty ? '.' : ', with ${unresolved.length} line${unresolved.length == 1 ? '' : 's'} needing review.'}',
+                          '${_reviewedShifts.length} schedule entr${_reviewedShifts.length == 1 ? 'y' : 'ies'} recognized${unresolved.isEmpty ? '.' : ', with ${unresolved.length} line${unresolved.length == 1 ? '' : 's'} needing review.'}',
                         ),
                       ),
                     ],
@@ -107,35 +208,82 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                 ),
               ),
               const SizedBox(height: 10),
-              for (final entry in shifts)
+              Text(
+                'Recognized entries',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              for (var i = 0; i < _reviewedShifts.length; i++)
                 Card(
                   child: ListTile(
                     dense: true,
                     leading: const Icon(Icons.calendar_today_outlined),
-                    title: Text(_date(entry.date)),
-                    subtitle: Text(entry.shift.raw),
-                    trailing: const Icon(Icons.check_circle_outline),
+                    title: Text(_date(_reviewedShifts[i].date)),
+                    subtitle: Text(_reviewedShifts[i].shift.raw),
+                    trailing: Wrap(
+                      spacing: 2,
+                      children: [
+                        IconButton(
+                          tooltip: 'Edit',
+                          onPressed: () => _editEntry(i),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove',
+                          onPressed: () => _removeEntry(i),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               if (unresolved.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text('Needs review', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 6),
-                for (final line in unresolved.take(12))
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Text(line),
+                const SizedBox(height: 12),
+                Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Needs review',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'OCR found schedule-like text that it could not safely turn into an entry. Review these lines before importing.',
+                        ),
+                        const SizedBox(height: 8),
+                        for (final line in unresolved.take(12))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: Text('• $line'),
+                          ),
+                        if (unresolved.length > 12)
+                          Text('…and ${unresolved.length - 12} more line${unresolved.length - 12 == 1 ? '' : 's'}'),
+                      ],
                     ),
                   ),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _reviewedWarnings,
+                  onChanged: (value) => setState(() => _reviewedWarnings = value ?? false),
+                  title: const Text('I reviewed the unrecognized text'),
+                  subtitle: const Text('Required before importing when OCR reports unresolved schedule-like text.'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
               ],
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: shifts.isEmpty ? null : () => Navigator.of(context).pop(shifts),
+                onPressed: canImport
+                    ? () => Navigator.of(context).pop(_reviewedShifts)
+                    : null,
                 icon: const Icon(Icons.check),
-                label: Text('Import ${shifts.length} Entries'),
+                label: Text('Import ${_reviewedShifts.length} Entries'),
               ),
-              if (shifts.isEmpty) ...[
+              if (_reviewedShifts.isEmpty) ...[
                 const SizedBox(height: 8),
                 const Text(
                   'No valid schedule entries were recognized. Try screenshots that clearly show both the dates and shift codes.',
