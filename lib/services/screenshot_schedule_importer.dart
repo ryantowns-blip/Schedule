@@ -33,20 +33,17 @@ class ScreenshotScheduleImporter {
         final recognized = await recognizer.processImage(InputImage.fromFilePath(path));
         raw.writeln(recognized.text);
         final spatial = _parseSpatialTable(recognized);
-        final textParsed = parseRecognizedText(recognized.text);
 
-        // Spatial parsing is preferred for the WMT 7-column table. Merge in
-        // text-only results only for dates the grid did not recover.
+        // Once a WMT grid is found, its geometry is authoritative. Do not
+        // merge the plain-text parser here: ML Kit often returns WMT table text
+        // in a non-cell reading order, which can pair a valid shift with the
+        // wrong date. The text parser remains a fallback only when no usable
+        // table geometry can be reconstructed.
         if (spatial.isNotEmpty) {
-          final byDay = <String, DatedShift>{for (final s in spatial) _dateKey(s.date): s};
-          for (final s in textParsed.$1) {
-            byDay.putIfAbsent(_dateKey(s.date), () => s);
-          }
-          final merged = byDay.values.toList();
-          allShifts.addAll(merged);
-          unrecognized.addAll(_spatialUnrecognized(recognized, merged));
-          unrecognized.addAll(textParsed.$2);
+          allShifts.addAll(spatial);
+          unrecognized.addAll(_spatialUnrecognized(recognized, spatial));
         } else {
+          final textParsed = parseRecognizedText(recognized.text);
           allShifts.addAll(textParsed.$1);
           unrecognized.addAll(textParsed.$2);
         }
@@ -103,7 +100,6 @@ class ScreenshotScheduleImporter {
     final start = rankedAnchors.first.$1;
 
     // Only dates inside this 14-day pay period participate in geometry.
-    // This removes page-header dates from the column/row fit as well.
     final tableDates = dates.where((entry) {
       final d = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
       final offset = d.difference(start).inDays;
@@ -111,7 +107,8 @@ class ScreenshotScheduleImporter {
     }).toList();
     if (tableDates.length < 2) return const [];
 
-    // Fit the seven column centers from date positions + known weekdays.
+    // Fit seven column centers from the actual WMT dates. The date itself tells
+    // us the weekday/column, so OCR reading order is irrelevant.
     final xSamples = <(int, double)>[];
     final rowYSamples = <int, List<double>>{0: <double>[], 1: <double>[]};
     for (final entry in tableDates) {
@@ -141,8 +138,6 @@ class ScreenshotScheduleImporter {
     var row0Y = mean(rowYSamples[0]!);
     var row1Y = mean(rowYSamples[1]!);
     if (row0Y == null && row1Y == null) return const [];
-    // If OCR only found dates in one row, infer the other row from the shift
-    // bands. The WMT rows are adjacent and have very similar cell heights.
     if (row0Y == null) row0Y = row1Y! - 55;
     if (row1Y == null) row1Y = row0Y + 55;
     final rowBoundary = (row0Y + row1Y) / 2;
@@ -156,24 +151,17 @@ class ScreenshotScheduleImporter {
 
       final row = item.centerY < rowBoundary ? 0 : 1;
       final date = start.add(Duration(days: row * 7 + column));
-
-      // A shift should sit below its row's date text and not wander into a
-      // neighboring table/header/footer region.
       final dateRowY = row == 0 ? row0Y : row1Y;
       final verticalGap = item.centerY - dateRowY;
       if (verticalGap < 3 || verticalGap > 65) continue;
 
       final key = _dateKey(date);
-      final existing = resultByDay[key];
-      if (existing == null) {
-        resultByDay[key] = DatedShift(date: date, shift: shiftEntry.$2);
-      }
+      resultByDay.putIfAbsent(key, () => DatedShift(date: date, shift: shiftEntry.$2));
     }
     return resultByDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
   List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {
-    final parsedRaw = parsed.map((e) => e.shift.raw.toUpperCase()).toSet();
     final parsedDates = parsed.map((e) => _dateKey(e.date)).toSet();
     final unresolved = <String>[];
     final recognizedDates = <String, DateTime>{};
@@ -186,31 +174,26 @@ class ScreenshotScheduleImporter {
           final date = _findDate(text);
           if (date != null) {
             recognizedDates[_dateKey(date)] = date;
-            continue;
           }
-          final shift = _findShift(text);
-          if (shift != null && !parsedRaw.contains(shift.raw.toUpperCase())) unresolved.add(text);
         }
       }
     }
 
-    // Only flag missing dates that fall inside a parsed pay period. Page-level
-    // dates such as "Today's date" should never appear as missing schedule days.
+    // For a reconstructed grid, the useful review signal is a missing day,
+    // not every valid shift token that ML Kit happened to emit separately.
+    // This keeps valid codes such as X, HL, 0500L$, etc. out of Needs Review.
     if (parsed.isNotEmpty) {
       final parsedDays = parsed.map((e) => DateTime(e.date.year, e.date.month, e.date.day)).toList()..sort();
-      final starts = parsedDays.map((d) => d.subtract(Duration(days: d.weekday % 7))).toSet();
-      for (final entry in recognizedDates.entries) {
-        final d = DateTime(entry.value.year, entry.value.month, entry.value.day);
-        final inParsedPeriod = starts.any((start) {
-          final offset = d.difference(start).inDays;
-          return offset >= 0 && offset <= 13;
-        });
-        if (inParsedPeriod && !parsedDates.contains(entry.key)) {
+      final start = parsedDays.first.subtract(Duration(days: parsedDays.first.weekday % 7));
+      for (var offset = 0; offset < 14; offset++) {
+        final d = start.add(Duration(days: offset));
+        final key = _dateKey(d);
+        if (recognizedDates.containsKey(key) && !parsedDates.contains(key)) {
           unresolved.add('No shift recognized for ${d.month}/${d.day}/${d.year}');
         }
       }
     }
-    return unresolved.toSet().toList();
+    return unresolved;
   }
 
   String _dateKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
