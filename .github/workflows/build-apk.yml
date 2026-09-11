@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -41,6 +41,9 @@ jobs:
           if ! grep -q 'READ_CALENDAR' "$MANIFEST"; then
             sed -i '/<manifest/a\    <uses-permission android:name="android.permission.READ_CALENDAR" />\n    <uses-permission android:name="android.permission.WRITE_CALENDAR" />' "$MANIFEST"
           fi
+          if ! grep -q 'READ_MEDIA_IMAGES' "$MANIFEST"; then
+            sed -i '/<manifest/a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />' "$MANIFEST"
+          fi
           if grep -q 'minSdk = flutter.minSdkVersion' "$BUILD_FILE"; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
           fi
@@ -48,6 +51,7 @@ jobs:
           sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
           grep -q 'android:label="ATC Schedule Manager Lite"' "$MANIFEST"
           grep -q 'applicationId = "com.ryantowns.atcschedulemanager.lite"' "$BUILD_FILE"
+          grep -q 'READ_MEDIA_IMAGES' "$MANIFEST"
 
       - name: Get dependencies
         run: flutter pub get
@@ -61,5 +65,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: atc-schedule-manager-lite-debug-apk
+          name: atc-schedule-manager-lite-v0.10.1-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
