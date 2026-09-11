@@ -34,7 +34,7 @@ jobs:
             flutter create --platforms=android --project-name atc_schedule_manager .
           fi
 
-      - name: Configure Android calendar access
+      - name: Configure Android app
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'READ_CALENDAR' "$MANIFEST"; then
@@ -43,6 +43,8 @@ jobs:
           if grep -q 'minSdk = flutter.minSdkVersion' android/app/build.gradle.kts; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' android/app/build.gradle.kts
           fi
+          sed -i 's/android:label="atc_schedule_manager"/android:label="Web Schedule Manager"/' "$MANIFEST"
+          grep -q 'android:label="Web Schedule Manager"' "$MANIFEST"
 
       - name: Get dependencies
         run: flutter pub get
@@ -56,5 +58,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: atc-schedule-manager-debug-apk
+          name: web-schedule-manager-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
