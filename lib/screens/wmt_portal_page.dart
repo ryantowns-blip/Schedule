@@ -28,8 +28,10 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
   final Set<String> _capturedPeriodValues = <String>{};
   final List<String> _expectedPeriodValues = <String>[];
   int _noProgressRetries = 0;
+  int _completionVerificationPasses = 0;
   String? _pendingPeriodValue;
   String? _lastAutomationUrl;
+  String? _initialCurrentPeriodValue;
 
   @override
   void initState() {
@@ -197,6 +199,50 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
     return null;
   }
 
+  List<String> _metadataOptions(Map<String, dynamic> metadata) {
+    return (metadata['options'] as List? ?? const [])
+        .map((item) {
+          if (item is! Map) return '';
+          final value = (item['value'] ?? '').toString().trim();
+          final text = (item['text'] ?? '').toString().trim();
+          return value.isNotEmpty ? value : text;
+        })
+        .where((value) => value.isNotEmpty)
+        .toList();
+  }
+
+  void _mergeExpectedPayPeriods(
+    Map<String, dynamic> metadata,
+    List<String> options,
+    String selectedValue,
+  ) {
+    if (options.isEmpty) return;
+
+    if (_initialCurrentPeriodValue == null) {
+      var currentIndex = metadata['selectedIndex'] is int
+          ? metadata['selectedIndex'] as int
+          : options.indexOf(selectedValue);
+      if (currentIndex < 0 || currentIndex >= options.length) {
+        currentIndex = options.indexOf(selectedValue);
+      }
+      if (currentIndex < 0) currentIndex = 0;
+      _initialCurrentPeriodValue = options[currentIndex];
+    }
+
+    final anchorIndex = options.indexOf(_initialCurrentPeriodValue);
+    if (anchorIndex < 0) return;
+
+    final beforeCount = _expectedPeriodValues.length;
+    for (final value in options.skip(anchorIndex)) {
+      if (!_expectedPeriodValues.contains(value)) {
+        _expectedPeriodValues.add(value);
+      }
+    }
+    if (_expectedPeriodValues.length != beforeCount) {
+      _completionVerificationPasses = 0;
+    }
+  }
+
   Future<void> _retryCollection() async {
     _collectingPayPeriods = false;
     _noProgressRetries++;
@@ -220,41 +266,18 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
     try {
       final metadata = await _readPayPeriodMetadata();
       if (metadata == null || metadata['found'] != true) {
-        // WMT sometimes emits an intermediate page-finished event during a
-        // pay-period postback. Never treat that transient state as completion.
         await _retryCollection();
         return;
       }
 
-      final options = (metadata['options'] as List? ?? const [])
-          .map((item) {
-            if (item is! Map) return '';
-            final value = (item['value'] ?? '').toString().trim();
-            final text = (item['text'] ?? '').toString().trim();
-            return value.isNotEmpty ? value : text;
-          })
-          .where((value) => value.isNotEmpty)
-          .toList();
-
+      final options = _metadataOptions(metadata);
       final selectedValue = (metadata['selectedValue'] ?? '').toString().trim();
 
-      // WMT My Schedule opens on the current pay period. Freeze the target list
-      // from that selected option through the end of the dropdown so past
-      // periods are ignored but every future period must be verified.
-      if (_expectedPeriodValues.isEmpty) {
-        var currentIndex = metadata['selectedIndex'] is int
-            ? metadata['selectedIndex'] as int
-            : options.indexOf(selectedValue);
-        if (currentIndex < 0 || currentIndex >= options.length) {
-          currentIndex = options.indexOf(selectedValue);
-        }
-        if (currentIndex < 0) currentIndex = 0;
-        _expectedPeriodValues.addAll(options.skip(currentIndex));
-      }
+      // WMT can populate more future periods after a postback. Keep merging
+      // every newly observed option from the original current period forward
+      // instead of freezing the target list on the first page load.
+      _mergeExpectedPayPeriods(metadata, options, selectedValue);
 
-      // If a postback was requested, do not capture until WMT confirms that
-      // exact target is now selected. This prevents stale HTML from being
-      // counted as the next period.
       if (_pendingPeriodValue != null && selectedValue != _pendingPeriodValue) {
         await _retryCollection();
         return;
@@ -272,6 +295,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           _capturedPages.add(html);
           _capturedPeriodValues.add(selectedValue);
           _noProgressRetries = 0;
+          _completionVerificationPasses = 0;
         }
       }
 
@@ -284,10 +308,19 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
       }
 
       if (nextValue == null) {
-        // Completion is allowed only after every target period has been
-        // captured and verified against the dropdown's selected value.
+        // Do not finish immediately. WMT occasionally exposes additional
+        // future pay periods shortly after a postback. Require two stable
+        // verification passes with no newly discovered periods first.
+        _completionVerificationPasses++;
         _collectingPayPeriods = false;
-        await _finishWithCapturedPages();
+        if (_completionVerificationPasses >= 2) {
+          await _finishWithCapturedPages();
+          return;
+        }
+        Future<void>.delayed(const Duration(milliseconds: 1500), () async {
+          if (!mounted || _finishing || _collectingPayPeriods) return;
+          await _captureScheduleAndAdvance();
+        });
         return;
       }
 
@@ -301,7 +334,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
             const nearby = ((s.parentElement?.innerText || '') + ' ' +
               (s.previousElementSibling?.textContent || '')).replace(/\\s+/g, ' ');
             return /pay\\s*period/i.test(nearby) ||
-              Array.from(s.options || []).some(o => /^\\d{6}\\\$/.test((o.value || o.text || '').trim()));
+              Array.from(s.options || []).some(o => /^\\d{6}\$/.test((o.value || o.text || '').trim()));
           });
           if (!select) return 'no-select';
           const option = Array.from(select.options || []).find(o =>
@@ -311,9 +344,6 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
 
           select.value = option.value;
           if (select.value !== option.value) select.selectedIndex = option.index;
-
-          // Fire one change event only. Calling both dispatchEvent(change) and
-          // select.onchange() can submit WMT twice and skip a pay period.
           select.dispatchEvent(new Event('change', {bubbles:true}));
           return 'advanced:' + targetValue;
         })();
@@ -366,7 +396,7 @@ class _WmtPortalPageState extends State<WmtPortalPage> {
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Text(
-              'Complete the normal FAA MyAccess sign-in. ATC Schedule Manager will fill your FAA email when possible, then collect the current and every future available pay period automatically. Each period is verified before the app returns to your schedule. Your password stays inside the FAA page and is not stored by the app.',
+              'Complete the normal FAA MyAccess sign-in. Web Schedule Manager will fill your FAA email when possible, then collect the current and every future available pay period automatically. Each period is verified before the app returns to your schedule. Your password stays inside the FAA page and is not stored by the app.',
             ),
           ),
           Expanded(child: WebViewWidget(controller: _controller)),
