@@ -65,6 +65,86 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
     });
   }
 
+  Future<bool> _reviewLeaveImport(ScreenshotLeaveImportResult result) async {
+    var reviewedWarnings = result.unrecognizedLines.isEmpty;
+    final approved = result.entries.where((entry) => entry.isApproved).length;
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('Review Leave Import'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${result.entries.length} leave entr${result.entries.length == 1 ? 'y' : 'ies'} recognized, including $approved approved.',
+                      ),
+                      const SizedBox(height: 12),
+                      for (final entry in result.entries)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today_outlined, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text('${_date(entry.date)}  •  ${entry.type}  •  ${entry.status}'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (result.unrecognizedLines.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Needs review',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text('OCR found leave-like text it could not safely match:'),
+                        const SizedBox(height: 6),
+                        for (final line in result.unrecognizedLines.take(10))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text('• $line'),
+                          ),
+                        if (result.unrecognizedLines.length > 10)
+                          Text('…and ${result.unrecognizedLines.length - 10} more line${result.unrecognizedLines.length - 10 == 1 ? '' : 's'}'),
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: reviewedWarnings,
+                          onChanged: (value) => setDialogState(() => reviewedWarnings = value ?? false),
+                          title: const Text('I reviewed the unrecognized text'),
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: result.entries.isEmpty || !reviewedWarnings
+                      ? null
+                      : () => Navigator.of(context).pop(true),
+                  child: const Text('Save Leave'),
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+  }
+
   Future<void> _importScreenshots() async {
     if (_importing) return;
     final images = await _picker.pickMultiImage();
@@ -76,15 +156,22 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
     });
     try {
       final result = await _importer.importFiles(images.map((e) => e.path).toList());
+      if (!mounted) return;
+
+      final save = await _reviewLeaveImport(result);
+      if (!mounted || !save) return;
+
       final now = DateTime.now();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(
         _entriesKey,
-        result.entries.map((entry) => jsonEncode({
-          'date': entry.date.toIso8601String(),
-          'type': entry.type,
-          'status': entry.status,
-        })).toList(),
+        result.entries
+            .map((entry) => jsonEncode({
+                  'date': entry.date.toIso8601String(),
+                  'type': entry.type,
+                  'status': entry.status,
+                }))
+            .toList(),
       );
       await prefs.setString(_updatedKey, now.toIso8601String());
 
@@ -92,9 +179,7 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       setState(() {
         _entries = result.entries;
         _lastUpdated = now;
-        _message = result.entries.isEmpty
-            ? 'No leave entries were recognized. Try a clearer screenshot showing date and status.'
-            : 'Imported ${result.entries.length} leave entr${result.entries.length == 1 ? 'y' : 'ies'} from ${images.length} screenshot${images.length == 1 ? '' : 's'}${result.unrecognizedLines.isEmpty ? '.' : '. Some text could not be confidently matched.'}';
+        _message = 'Imported ${result.entries.length} leave entr${result.entries.length == 1 ? 'y' : 'ies'} from ${images.length} screenshot${images.length == 1 ? '' : 's'}.';
       });
     } catch (e) {
       if (!mounted) return;
