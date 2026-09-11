@@ -54,6 +54,28 @@ button:disabled { opacity: .55; }
 .status.good { border-left: 4px solid #218739; }
 .status.warn { border-left: 4px solid #b7791f; }
 .status.error { border-left: 4px solid #b42318; }
+.period-picker {
+  margin-bottom: 10px;
+  padding: 9px;
+  border-radius: 9px;
+  background: white;
+}
+.period-picker label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 9px;
+  color: #68717a;
+}
+.period-picker select {
+  width: 100%;
+  border: 1px solid #d8dee6;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+  color: #16202a;
+  font-size: 11px;
+  font-weight: 700;
+}
 .summary-grid {
   display: grid;
   grid-template-columns: 1.4fr .6fr 1fr;
