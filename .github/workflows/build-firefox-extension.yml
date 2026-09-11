@@ -1,0 +1,47 @@
+name: Build Firefox Extension
+
+on:
+  push:
+    branches:
+      - integration/extension-to-app
+      - prototype/firefox-android-extension
+    paths:
+      - 'firefox-extension/**'
+      - 'shared/extension_app_payload.schema.json'
+      - '.github/workflows/build-firefox-extension.yml'
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate manifest JSON
+        run: python -m json.tool firefox-extension/manifest.json > /dev/null
+
+      - name: Validate transfer schema JSON
+        run: python -m json.tool shared/extension_app_payload.schema.json > /dev/null
+
+      - name: Verify required extension files
+        run: |
+          test -f firefox-extension/manifest.json
+          test -f firefox-extension/capture.js
+          test -f firefox-extension/parser.js
+          test -f firefox-extension/popup/popup.html
+          test -f firefox-extension/popup/popup.js
+          test -f firefox-extension/popup/popup.css
+
+      - name: Package extension
+        run: |
+          mkdir -p dist
+          cd firefox-extension
+          zip -r ../dist/atc-schedule-manager-firefox.zip .
+
+      - name: Upload extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: atc-schedule-manager-firefox-extension
+          path: dist/atc-schedule-manager-firefox.zip
+          if-no-files-found: error
