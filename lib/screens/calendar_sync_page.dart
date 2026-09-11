@@ -1,9 +1,9 @@
 import 'package:device_calendar_plus/device_calendar_plus.dart' as dc;
 import 'package:flutter/material.dart';
 
+import '../models/dated_shift.dart';
 import '../models/schedule_display_settings.dart';
 import '../services/calendar_sync_service.dart';
-import '../services/wmt_schedule_extractor.dart';
 
 class CalendarSyncPage extends StatefulWidget {
   const CalendarSyncPage({
@@ -77,7 +77,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Existing shifts found'),
-        content: Text('$count matching Web Schedule Manager calendar entr${count == 1 ? 'y' : 'ies'} already exist. What should the app do with matches?'),
+        content: Text('$count matching ATC Schedule Manager calendar entr${count == 1 ? 'y' : 'ies'} already exist. What should the app do with matches?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -176,7 +176,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'Only the dates with detected schedule changes are shown here. Existing Web Schedule Manager events on those dates will be updated, replaced, or removed as needed.',
+                                'Only the dates with detected schedule changes are shown here. Existing ATC Schedule Manager events on those dates will be updated, replaced, or removed as needed.',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                             ),
@@ -228,7 +228,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                             Text('$holidayCount Holiday Leave entr${holidayCount == 1 ? 'y is' : 'ies are'} also ready to sync.'),
                           ],
                           const SizedBox(height: 8),
-                          const Text('Work events use the exact WMT shift name as the calendar title and start at the time printed in that name. Holiday Leave is added as an all-day event.'),
+                          const Text('Work events use the exact imported shift code as the calendar title and start at the time printed in that code. Holiday Leave is added as an all-day event.'),
                         ],
                       ),
                     ),
