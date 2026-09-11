@@ -9,6 +9,7 @@ class ScheduleDisplaySettings {
     required this.annualLeaveColor,
     required this.sickColor,
     required this.holidayColor,
+    required this.annualLeaveCalendarColor,
   });
 
   final Color? regularColor;
@@ -17,6 +18,7 @@ class ScheduleDisplaySettings {
   final Color? annualLeaveColor;
   final Color? sickColor;
   final Color? holidayColor;
+  final Color? annualLeaveCalendarColor;
 
   static const defaults = ScheduleDisplaySettings(
     regularColor: null,
@@ -25,6 +27,7 @@ class ScheduleDisplaySettings {
     annualLeaveColor: Color(0xFFD8F3DC),
     sickColor: Color(0xFFE8DEF8),
     holidayColor: Color(0xFFE2E2E6),
+    annualLeaveCalendarColor: Color(0xFFD8F3DC),
   );
 
   static const _regularKey = 'display_regular_color';
@@ -33,6 +36,7 @@ class ScheduleDisplaySettings {
   static const _annualLeaveKey = 'display_annual_leave_color';
   static const _sickKey = 'display_sick_color';
   static const _holidayKey = 'display_holiday_color';
+  static const _annualLeaveCalendarKey = 'calendar_annual_leave_color';
   static const _none = -1;
 
   static Future<ScheduleDisplaySettings> load() async {
@@ -44,13 +48,16 @@ class ScheduleDisplaySettings {
       return Color(stored);
     }
 
+    final annualDisplay = read(_annualLeaveKey, defaults.annualLeaveColor);
     return ScheduleDisplaySettings(
       regularColor: read(_regularKey, defaults.regularColor),
       overtimeColor: read(_overtimeKey, defaults.overtimeColor),
       offColor: read(_offKey, defaults.offColor),
-      annualLeaveColor: read(_annualLeaveKey, defaults.annualLeaveColor),
+      annualLeaveColor: annualDisplay,
       sickColor: read(_sickKey, defaults.sickColor),
       holidayColor: read(_holidayKey, defaults.holidayColor),
+      annualLeaveCalendarColor:
+          read(_annualLeaveCalendarKey, annualDisplay ?? defaults.annualLeaveCalendarColor),
     );
   }
 
@@ -62,6 +69,10 @@ class ScheduleDisplaySettings {
     await prefs.setInt(_annualLeaveKey, annualLeaveColor?.value ?? _none);
     await prefs.setInt(_sickKey, sickColor?.value ?? _none);
     await prefs.setInt(_holidayKey, holidayColor?.value ?? _none);
+    await prefs.setInt(
+      _annualLeaveCalendarKey,
+      annualLeaveCalendarColor?.value ?? _none,
+    );
   }
 
   ScheduleDisplaySettings copyWith({
@@ -77,14 +88,20 @@ class ScheduleDisplaySettings {
     bool clearSick = false,
     Color? holidayColor,
     bool clearHoliday = false,
+    Color? annualLeaveCalendarColor,
+    bool clearAnnualLeaveCalendar = false,
   }) {
     return ScheduleDisplaySettings(
       regularColor: clearRegular ? null : regularColor ?? this.regularColor,
       overtimeColor: clearOvertime ? null : overtimeColor ?? this.overtimeColor,
       offColor: clearOff ? null : offColor ?? this.offColor,
-      annualLeaveColor: clearAnnualLeave ? null : annualLeaveColor ?? this.annualLeaveColor,
+      annualLeaveColor:
+          clearAnnualLeave ? null : annualLeaveColor ?? this.annualLeaveColor,
       sickColor: clearSick ? null : sickColor ?? this.sickColor,
       holidayColor: clearHoliday ? null : holidayColor ?? this.holidayColor,
+      annualLeaveCalendarColor: clearAnnualLeaveCalendar
+          ? null
+          : annualLeaveCalendarColor ?? this.annualLeaveCalendarColor,
     );
   }
 }
