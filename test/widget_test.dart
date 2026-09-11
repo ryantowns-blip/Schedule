@@ -13,7 +13,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ATC Schedule Manager'), findsOneWidget);
-    expect(find.text('No saved schedule yet'), findsOneWidget);
+    expect(find.text('No schedule imported yet'), findsOneWidget);
     expect(find.text('Import Schedule Screenshots'), findsOneWidget);
   });
 }
