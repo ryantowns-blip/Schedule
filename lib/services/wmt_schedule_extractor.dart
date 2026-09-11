@@ -1,14 +1,10 @@
 import 'dart:convert';
 
+import '../models/dated_shift.dart';
 import '../models/parsed_shift.dart';
 import 'schedule_parser.dart';
 
-class DatedShift {
-  const DatedShift({required this.date, required this.shift});
-
-  final DateTime date;
-  final ParsedShift shift;
-}
+export '../models/dated_shift.dart';
 
 class WmtScheduleExtractor {
   const WmtScheduleExtractor({this.parser = const ScheduleParser()});
@@ -31,9 +27,6 @@ class WmtScheduleExtractor {
     var html = normalizeCapturedHtml(capturedHtml);
     if (html.isEmpty) return const [];
 
-    // Literal WMT annual-leave codes such as A<1415L> look like HTML tags.
-    // Encode only those code brackets before cell parsing so they survive
-    // normal HTML tag stripping. Already entity-encoded values are unchanged.
     html = html.replaceAllMapped(
       RegExp(r'A<([A-Za-z0-9$]+)>', caseSensitive: false),
       (match) => 'A&lt;${match.group(1) ?? ''}&gt;',
