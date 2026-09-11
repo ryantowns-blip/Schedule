@@ -1,31 +1,54 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  min-width: 340px;
-  max-width: 420px;
+  min-width: 360px;
+  max-width: 460px;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f6f7f9;
   color: #16202a;
 }
-main { padding: 16px; }
+main { padding: 14px; }
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
 h1 { margin: 0; font-size: 20px; }
-.sub { margin: 3px 0 14px; font-size: 12px; color: #68717a; }
+.sub { margin: 3px 0 12px; font-size: 12px; color: #68717a; }
+.storage-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e8eef5;
+  font-size: 10px;
+  font-weight: 700;
+  color: #35526f;
+}
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
 button {
-  width: 100%;
   border: 0;
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 11px 12px;
   font-weight: 700;
   background: #1769aa;
   color: white;
 }
+button.secondary {
+  background: white;
+  color: #425466;
+  border: 1px solid #d8dee6;
+}
 button:disabled { opacity: .55; }
 .status {
-  margin: 12px 0;
-  padding: 10px 12px;
+  margin: 10px 0;
+  padding: 9px 11px;
   border-radius: 9px;
   background: white;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
 }
 .status.good { border-left: 4px solid #218739; }
@@ -33,37 +56,82 @@ button:disabled { opacity: .55; }
 .status.error { border-left: 4px solid #b42318; }
 .summary-grid {
   display: grid;
-  grid-template-columns: 1fr 1.5fr .7fr;
-  gap: 8px;
-  margin-bottom: 12px;
+  grid-template-columns: 1.4fr .6fr 1fr;
+  gap: 7px;
+  margin-bottom: 10px;
 }
 .summary-grid > div {
   background: white;
   border-radius: 9px;
-  padding: 9px;
+  padding: 8px 9px;
 }
-.summary-grid span { display: block; font-size: 10px; color: #68717a; }
-.summary-grid strong { display: block; margin-top: 3px; font-size: 12px; overflow-wrap: anywhere; }
-h2 { font-size: 14px; margin: 14px 0 8px; }
-#rows { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
-.row {
+.summary-grid span { display: block; font-size: 9px; color: #68717a; }
+.summary-grid strong { display: block; margin-top: 3px; font-size: 11px; overflow-wrap: anywhere; }
+.section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  background: white;
-  border-radius: 9px;
-  padding: 9px 10px;
+  margin: 12px 0 6px;
 }
-.row-main strong, .row-main span, .row-meta span { display: block; }
-.row-main strong { font-size: 12px; }
-.row-main span { font-size: 11px; color: #4c5661; margin-top: 2px; }
-.row-meta { text-align: right; }
-.row-meta span:first-child { font-size: 11px; font-weight: 700; }
-.row-meta span:last-child { font-size: 11px; color: #4c5661; margin-top: 2px; }
+h2 { font-size: 14px; margin: 0; }
+.today-key {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  color: #1769aa;
+}
+#rows { display: grid; gap: 5px; max-height: 430px; overflow: auto; }
+.row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr .75fr;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 7px 9px;
+}
+.row.today {
+  border-color: #1769aa;
+  box-shadow: 0 0 0 1px rgba(23, 105, 170, .08);
+}
+.date-block strong,
+.shift-block strong,
+.time-block strong,
+.date-block span,
+.shift-block span,
+.time-block span { display: block; }
+.date-block strong { font-size: 11px; }
+.today-mark {
+  min-height: 10px;
+  margin-bottom: 2px;
+  font-size: 8px;
+  font-weight: 800;
+  color: #1769aa;
+  letter-spacing: .05em;
+}
+.shift-block strong { font-size: 11px; }
+.shift-block span {
+  margin-top: 2px;
+  font-size: 9px;
+  color: #68717a;
+  line-height: 1.2;
+}
+.time-block { text-align: right; }
+.time-block strong { font-size: 11px; }
+.time-block span { margin-top: 2px; font-size: 9px; color: #68717a; }
+.empty-state {
+  margin-top: 12px;
+  padding: 18px 14px;
+  border-radius: 10px;
+  background: white;
+  text-align: center;
+}
+.empty-state strong { display: block; font-size: 13px; }
+.empty-state span { display: block; margin-top: 5px; font-size: 11px; color: #68717a; line-height: 1.4; }
 .privacy {
-  margin: 14px 2px 0;
-  font-size: 10px;
+  margin: 12px 2px 0;
+  font-size: 9px;
   color: #7b838c;
   line-height: 1.35;
 }
