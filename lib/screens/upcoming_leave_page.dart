@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/schedule_display_settings.dart';
 import '../models/upcoming_leave.dart';
 import '../services/leave_calendar_service.dart';
+import '../services/screenshot_cleanup_service.dart';
 import '../services/screenshot_leave_importer.dart';
 
 class UpcomingLeavePage extends StatefulWidget {
@@ -24,6 +25,7 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
 
   final _picker = ImagePicker();
   final _importer = const ScreenshotLeaveImporter();
+  final _cleanup = const ScreenshotCleanupService();
   final _calendar = LeaveCalendarService();
 
   List<UpcomingLeaveEntry> _entries = const [];
@@ -132,11 +134,12 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
     );
   }
 
-  Future<List<UpcomingLeaveEntry>?> _reviewLeaveImport(ScreenshotLeaveImportResult result) async {
+  Future<_LeaveReviewDecision?> _reviewLeaveImport(ScreenshotLeaveImportResult result) async {
     var reviewedWarnings = result.unrecognizedLines.isEmpty;
+    var deleteSourceScreenshots = false;
     final entries = List<UpcomingLeaveEntry>.from(result.entries);
 
-    return showDialog<List<UpcomingLeaveEntry>>(
+    return showDialog<_LeaveReviewDecision>(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
@@ -193,6 +196,18 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: deleteSourceScreenshots,
+                      onChanged: (value) => setDialogState(() => deleteSourceScreenshots = value ?? false),
+                      title: const Text('Delete source screenshots after import'),
+                      subtitle: const Text(
+                        'Optional. Leave data is saved first. Lite then requests photo-library access and deletes only uniquely matched source images.',
+                      ),
+                      secondary: const Icon(Icons.delete_sweep_outlined),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
                   ],
                 ),
               ),
@@ -202,7 +217,12 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
               FilledButton(
                 onPressed: entries.isEmpty || !reviewedWarnings
                     ? null
-                    : () => Navigator.of(context).pop(List<UpcomingLeaveEntry>.from(entries)),
+                    : () => Navigator.of(context).pop(
+                          _LeaveReviewDecision(
+                            entries: List<UpcomingLeaveEntry>.from(entries),
+                            deleteSourceImages: deleteSourceScreenshots,
+                          ),
+                        ),
                 child: const Text('Save Leave'),
               ),
             ],
@@ -225,9 +245,9 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       final result = await _importer.importFiles(images.map((e) => e.path).toList());
       if (!mounted) return;
 
-      final reviewedEntries = await _reviewLeaveImport(result);
-      if (!mounted || reviewedEntries == null) return;
-      reviewedEntries.sort((a, b) => a.date.compareTo(b.date));
+      final decision = await _reviewLeaveImport(result);
+      if (!mounted || decision == null) return;
+      final reviewedEntries = decision.entries..sort((a, b) => a.date.compareTo(b.date));
 
       final now = DateTime.now();
       final prefs = await SharedPreferences.getInstance();
@@ -249,6 +269,20 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
         _lastUpdated = now;
         _message = 'Imported ${reviewedEntries.length} reviewed leave entr${reviewedEntries.length == 1 ? 'y' : 'ies'} from ${images.length} screenshot${images.length == 1 ? '' : 's'}.';
       });
+
+      if (decision.deleteSourceImages) {
+        final cleanup = await _cleanup.deleteSourceImages(images);
+        if (!mounted) return;
+        setState(() {
+          if (cleanup.permissionDenied) {
+            _message = '${_message!} Screenshot deletion was skipped because photo-library access was not granted.';
+          } else if (cleanup.deleted == cleanup.requested) {
+            _message = '${_message!} Deleted ${cleanup.deleted} source screenshot${cleanup.deleted == 1 ? '' : 's'}.';
+          } else {
+            _message = '${_message!} Deleted ${cleanup.deleted} of ${cleanup.requested} source screenshots; unmatched or ambiguous images were left on the phone.';
+          }
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _message = 'Could not read leave screenshots: $e');
@@ -371,4 +405,11 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       ),
     );
   }
+}
+
+class _LeaveReviewDecision {
+  const _LeaveReviewDecision({required this.entries, required this.deleteSourceImages});
+
+  final List<UpcomingLeaveEntry> entries;
+  final bool deleteSourceImages;
 }
