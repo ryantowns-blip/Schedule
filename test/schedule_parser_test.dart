@@ -18,7 +18,7 @@ void main() {
   });
 
   test('parses overtime shift', () {
-    final shift = parser.parse(r'$1400');
+    final shift = parser.parse(String.fromCharCode(36) + '1400');
     expect(shift.isOvertime, isTrue);
   });
 
@@ -45,12 +45,7 @@ void main() {
   });
 
   test('calculates scheduled overtime hours from WMT codes', () {
-    expect(parser.parse(r'1300L
-    final shift = parser.parse('2230');
-    expect(shift.effectiveEndMinutes, greaterThan(1440));
-  });
-}
-).scheduledOvertimeMinutes, 8 * 60);
+    expect(parser.parse('1300L' + String.fromCharCode(36)).scheduledOvertimeMinutes, 8 * 60);
     expect(parser.parse('Xtra1400').scheduledOvertimeMinutes, 2 * 60);
     expect(parser.parse('1400Xtra').scheduledOvertimeMinutes, 2 * 60);
     expect(parser.parse('Xt1400ra').scheduledOvertimeMinutes, 2 * 60);
