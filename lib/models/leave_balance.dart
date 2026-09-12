@@ -105,11 +105,15 @@ class LeaveProjectionService {
     final asOf = _dateOnly(settings.effectiveDate);
     final today = _dateOnly(DateTime.now());
     final leaveYearEnd = _leaveYearEndContaining(asOf);
+    final leaveYearStart = _leaveYearStartContaining(asOf);
     final accrualDates = _payPeriodEndDatesAfter(asOf, leaveYearEnd);
     final uniqueUsage = <String, LeaveUsage>{};
     for (final item in usage) {
       final date = _dateOnly(item.date);
-      if (date.isBefore(asOf) || date.isAfter(leaveYearEnd)) continue;
+      if (date.isAfter(leaveYearEnd)) continue;
+      final isManualEntry = item.id != null;
+      if (isManualEntry && date.isBefore(leaveYearStart)) continue;
+      if (!isManualEntry && date.isBefore(asOf)) continue;
       final key = item.id ?? '${date.year}-${date.month}-${date.day}-${item.kind.name}';
       uniqueUsage.putIfAbsent(key, () => item);
     }
@@ -166,6 +170,13 @@ class LeaveProjectionService {
           .clamp(0, double.infinity)
           .toDouble(),
     );
+  }
+
+  DateTime _leaveYearStartContaining(DateTime date) {
+    final startThisYear = _firstPayPeriodStart(date.year);
+    return date.isBefore(startThisYear)
+        ? _firstPayPeriodStart(date.year - 1)
+        : startThisYear;
   }
 
   DateTime _leaveYearEndContaining(DateTime date) {
