@@ -171,6 +171,11 @@ class ScreenshotScheduleImporter {
       return offset >= 0 && offset <= 13;
     }).toList();
     if (tableDates.length < 4) return const [];
+    final observedOffsets = tableDates.map((entry) {
+      final date = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
+      return date.difference(start!).inDays;
+    }).where((offset) => offset >= 0 && offset <= 13).toSet();
+    final completeDateGrid = observedOffsets.length == 14;
 
     // Derive the seven physical column centers directly from the printed date
     // positions. This is more stable than fitting one regression line and works
@@ -278,7 +283,21 @@ class ScreenshotScheduleImporter {
         return true;
       }).toList();
 
-      if (inCell.isEmpty) continue;
+      if (inCell.isEmpty) {
+        // WMT always has exactly one schedule value per person per day. ML Kit
+        // occasionally drops the tiny one-character X while still recognizing
+        // all 14 printed dates and every surrounding shift. Only infer X when
+        // the complete pay-period date grid is present; partial/cropped grids
+        // continue to report a missing cell for review.
+        if (completeDateGrid) {
+          final date = start.add(Duration(days: offset));
+          resultByDay.putIfAbsent(
+            _dateKey(date),
+            () => DatedShift(date: date, shift: parser.parse('X')),
+          );
+        }
+        continue;
+      }
 
       // Prefer the candidate closest to the cell's column center, then prefer
       // element-level OCR over a wider line-level fallback when tied.
