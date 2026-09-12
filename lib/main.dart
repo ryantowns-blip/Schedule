@@ -625,6 +625,7 @@ class _HomeLeaveRow extends StatelessWidget {
           ),
         ],
       );
+}
 
 class _HomeActions extends StatelessWidget {
   const _HomeActions({
