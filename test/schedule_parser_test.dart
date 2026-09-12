@@ -44,6 +44,19 @@ void main() {
     expect(shift.effectiveEndMinutes, 24 * 60);
   });
 
+  test('calculates scheduled overtime hours from WMT codes', () {
+    expect(parser.parse(r'1300L
+    final shift = parser.parse('2230');
+    expect(shift.effectiveEndMinutes, greaterThan(1440));
+  });
+}
+).scheduledOvertimeMinutes, 8 * 60);
+    expect(parser.parse('Xtra1400').scheduledOvertimeMinutes, 2 * 60);
+    expect(parser.parse('1400Xtra').scheduledOvertimeMinutes, 2 * 60);
+    expect(parser.parse('Xt1400ra').scheduledOvertimeMinutes, 2 * 60);
+    expect(parser.parse('1300LS').scheduledOvertimeMinutes, 0);
+  });
+
   test('overnight shifts can exceed midnight', () {
     final shift = parser.parse('2230');
     expect(shift.effectiveEndMinutes, greaterThan(1440));
