@@ -38,6 +38,24 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _reset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset all colors?'),
+        content: const Text('This restores every schedule and calendar color to its default.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     setState(() => _settings = ScheduleDisplaySettings.defaults);
     await _settings.save();
   }
@@ -123,16 +141,16 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Schedule Settings'),
+        title: const Text('Settings'),
         actions: [TextButton(onPressed: _reset, child: const Text('Reset'))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Schedule colors', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          const Text(
-            'Choose the background used for each type of schedule entry. Use Custom to pick any color.',
+          _SectionHeading(
+            icon: Icons.calendar_view_week_outlined,
+            title: 'Schedule colors',
+            description: 'Choose the background used for each type of schedule entry. Use Custom to pick any color.',
           ),
           const SizedBox(height: 16),
           _ColorRow(
@@ -178,10 +196,10 @@ class _SettingsPageState extends State<SettingsPage> {
             onCustom: () => _pickCustomColor(_ColorTarget.holiday),
           ),
           const SizedBox(height: 24),
-          Text('Calendar colors', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          const Text(
-            'Annual Leave is stored on its own ATC Annual Leave calendar, so its calendar color can be set independently. Work shifts and Holiday Leave use the color of the destination calendar you select when syncing.',
+          const _SectionHeading(
+            icon: Icons.event_outlined,
+            title: 'Calendar colors',
+            description: 'Annual Leave uses its own calendar color. Work shifts and Holiday Leave use the destination calendar color selected during sync.',
           ),
           const SizedBox(height: 16),
           _ColorRow(
@@ -202,6 +220,39 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(description, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

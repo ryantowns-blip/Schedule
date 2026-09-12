@@ -10,6 +10,7 @@ import 'screens/settings_page.dart';
 import 'screens/upcoming_leave_page.dart';
 import 'services/schedule_parser.dart';
 import 'services/screenshot_cleanup_service.dart';
+import 'theme/app_theme.dart';
 
 void main() => runApp(const AtcScheduleManagerApp());
 
@@ -20,11 +21,8 @@ class AtcScheduleManagerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'ATC Schedule Manager Lite',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
+      title: 'Web Schedule Manager',
+      theme: AppTheme.light,
       home: const ScheduleHomePage(),
     );
   }
@@ -219,8 +217,8 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   void _showAbout() {
     showAboutDialog(
       context: context,
-      applicationName: 'ATC Schedule Manager Lite',
-      applicationVersion: '0.10.16 beta',
+      applicationName: 'Web Schedule Manager',
+      applicationVersion: '0.11.0 beta',
       applicationIcon: const Icon(Icons.calendar_month_outlined, size: 42),
       children: const [
         Text(
@@ -255,7 +253,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ATC Schedule Manager Lite'),
+        title: const Text('Web Schedule Manager'),
         actions: [
           IconButton(
             tooltip: 'Upcoming Leave',
@@ -304,7 +302,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Row(
                       children: [
@@ -347,22 +345,10 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       ),
                     ],
                     const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: _importScreenshots,
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: const Text('Import New Screenshots'),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _openUpcomingLeave,
-                      icon: const Icon(Icons.beach_access_outlined),
-                      label: const Text('Upcoming Leave'),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: () => _openCalendarSync(),
-                      icon: const Icon(Icons.event_available_outlined),
-                      label: const Text('Add to Calendar'),
+                    _HomeActions(
+                      onImport: _importScreenshots,
+                      onLeave: _openUpcomingLeave,
+                      onCalendar: () => _openCalendarSync(),
                     ),
                     const SizedBox(height: 16),
                     Card(
@@ -396,39 +382,108 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       ),
                     ),
                   ] else ...[
-                    const SizedBox(height: 70),
-                    Icon(
-                      Icons.photo_library_outlined,
-                      size: 72,
-                      color: Theme.of(context).colorScheme.primary,
+                    const SizedBox(height: 36),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.calendar_month_outlined,
+                                size: 38,
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              'Your schedule starts here',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Take screenshots of your WMT schedule, then select them here. You will review every entry before anything is saved.',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 22),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: _importScreenshots,
+                                icon: const Icon(Icons.add_photo_alternate_outlined),
+                                label: const Text('Import Schedule Screenshots'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No schedule imported yet',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Take screenshots of your schedule pages, then select them here. The app will read the dates and shift codes locally and let you review the results before saving.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: _importScreenshots,
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: const Text('Import Schedule Screenshots'),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _openUpcomingLeave,
-                      icon: const Icon(Icons.beach_access_outlined),
-                      label: const Text('Upcoming Leave'),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openUpcomingLeave,
+                        icon: const Icon(Icons.beach_access_outlined),
+                        label: const Text('Import Upcoming Leave'),
+                      ),
                     ),
                   ],
                 ],
               ),
       ),
+    );
+  }
+}
+
+class _HomeActions extends StatelessWidget {
+  const _HomeActions({
+    required this.onImport,
+    required this.onLeave,
+    required this.onCalendar,
+  });
+
+  final VoidCallback onImport;
+  final VoidCallback onLeave;
+  final VoidCallback onCalendar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: onImport,
+          icon: const Icon(Icons.add_photo_alternate_outlined),
+          label: const Text('Update Schedule'),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onLeave,
+                icon: const Icon(Icons.beach_access_outlined),
+                label: const Text('Leave'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onCalendar,
+                icon: const Icon(Icons.event_available_outlined),
+                label: const Text('Calendar'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
