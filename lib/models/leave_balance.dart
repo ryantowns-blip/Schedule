@@ -109,7 +109,7 @@ class LeaveProjectionService {
     final uniqueUsage = <String, LeaveUsage>{};
     for (final item in usage) {
       final date = _dateOnly(item.date);
-      if (!date.isAfter(asOf) || date.isAfter(leaveYearEnd)) continue;
+      if (date.isBefore(asOf) || date.isAfter(leaveYearEnd)) continue;
       final key = item.id ?? '${date.year}-${date.month}-${date.day}-${item.kind.name}';
       uniqueUsage.putIfAbsent(key, () => item);
     }
