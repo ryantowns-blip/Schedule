@@ -1,7 +1,7 @@
 name: atc_schedule_manager
 description: Web Schedule Manager with private on-device schedule parsing and calendar sync.
 publish_to: 'none'
-version: 0.12.3+31
+version: 0.12.4+32
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
