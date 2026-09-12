@@ -1,4 +1,4 @@
-name: Build Android APK # v0.10.16 beta cleanup
+name: Build Android APK # v0.11.0 beta interface
 
 on:
   workflow_dispatch:
@@ -58,9 +58,9 @@ jobs:
             sed -i '/release {/a\\            isShrinkResources = false' "$BUILD_FILE"
           fi
           grep -q 'isMinifyEnabled = false' "$BUILD_FILE"
-          sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager Lite"/' "$MANIFEST"
+          sed -i 's/android:label="atc_schedule_manager"/android:label="Web Schedule Manager"/' "$MANIFEST"
           sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
-          grep -q 'android:label="ATC Schedule Manager Lite"' "$MANIFEST"
+          grep -q 'android:label="Web Schedule Manager"' "$MANIFEST"
           grep -q 'applicationId = "com.ryantowns.atcschedulemanager.lite"' "$BUILD_FILE"
           grep -q 'READ_MEDIA_IMAGES' "$MANIFEST"
 
@@ -76,5 +76,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: atc-schedule-manager-lite-v0.10.16-arm64-release-apk
+          name: web-schedule-manager-v0.11.0-arm64-release-apk
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
