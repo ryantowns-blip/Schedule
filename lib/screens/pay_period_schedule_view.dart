@@ -11,6 +11,11 @@ class PayPeriodSchedule {
   final List<DatedShift> shifts;
 
   String get label => '${start.month}/${start.day}–${end.month}/${end.day}';
+
+  int get scheduledOvertimeMinutes => shifts.fold(
+        0,
+        (total, entry) => total + entry.shift.scheduledOvertimeMinutes,
+      );
 }
 
 List<PayPeriodSchedule> buildPayPeriods(List<DatedShift> shifts) {
@@ -41,6 +46,10 @@ class PayPeriodScheduleView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final periods = buildPayPeriods(shifts);
+    final combinedOvertimeMinutes = shifts.fold<int>(
+      0,
+      (total, entry) => total + entry.shift.scheduledOvertimeMinutes,
+    );
     if (periods.isEmpty) return const SizedBox.shrink();
 
     return DefaultTabController(
@@ -51,7 +60,16 @@ class PayPeriodScheduleView extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text('My Schedule', style: Theme.of(context).textTheme.titleMedium)),
-              Text('${shifts.length} entries', style: Theme.of(context).textTheme.bodySmall),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('${shifts.length} entries', style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    'Total OT: ${_hours(combinedOvertimeMinutes)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -101,6 +119,30 @@ class _PeriodBodyState extends State<_PeriodBody> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.schedule_outlined, size: 19),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Scheduled overtime',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Text(
+                    _hours(widget.period.scheduledOvertimeMinutes),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
             _WeekRow(
               title: 'Week 1',
               start: widget.period.start,
@@ -284,6 +326,13 @@ class _DayCell extends StatelessWidget {
       ),
     );
   }
+}
+
+String _hours(int minutes) {
+  final hours = minutes / 60;
+  return hours == hours.roundToDouble()
+      ? '${hours.toInt()} hr'
+      : '${hours.toStringAsFixed(1)} hr';
 }
 
 String _key(DateTime date) => '${date.year}-${date.month}-${date.day}';
