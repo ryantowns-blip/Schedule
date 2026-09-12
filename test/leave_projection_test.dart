@@ -94,4 +94,32 @@ void main() {
     expect(projection.currentAnnual, 96);
     expect(projection.projectedAnnual, 96);
   });
+  test('counts prior manual leave within the current leave year', () {
+    final settings = LeaveBalanceSettings(
+      effectiveDate: DateTime(2026, 9, 12),
+      annualBalance: 120,
+      sickBalance: 20,
+      annualAccrualPerPayPeriod: 0,
+      sickAccrualPerPayPeriod: 0,
+    );
+    final projection = service.calculate(
+      settings: settings,
+      usage: [
+        LeaveUsage(
+          id: 'manual-prior-date',
+          date: DateTime(2026, 9, 8),
+          kind: LeaveKind.annual,
+          hours: 2,
+        ),
+        LeaveUsage(
+          date: DateTime(2026, 9, 8),
+          kind: LeaveKind.annual,
+          hours: 8,
+        ),
+      ],
+    );
+    expect(projection.annualPlanned, 2);
+    expect(projection.currentAnnual, 118);
+    expect(projection.projectedAnnual, 118);
+  });
 }
