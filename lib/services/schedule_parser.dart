@@ -7,12 +7,44 @@ class ScheduleParser {
     final raw = input.trim();
     final normalized = raw.replaceAll(' ', '').toUpperCase();
 
-    if (normalized == 'X') {
+    ParsedShift nonWorking(ShiftType type) => ParsedShift(
+          raw: raw,
+          startMinutes: null,
+          baseDurationMinutes: 0,
+          shiftType: type,
+          flexType: FlexType.none,
+          isSupervisor: false,
+          isCic: false,
+          overtimeBeforeMinutes: 0,
+          overtimeAfterMinutes: 0,
+        );
+
+    if (normalized == 'X') return nonWorking(ShiftType.dayOff);
+    if (normalized == 'SL') return nonWorking(ShiftType.sickLeave);
+    if (normalized == 'HL') return nonWorking(ShiftType.holidayLeave);
+
+    // WMT annual leave is encoded as A<shift>, for example A<0500>,
+    // A<1415L>, or A<0715Q>. The numeric time inside the brackets is the
+    // authoritative leave start; shift modifiers remain part of the raw code
+    // but do not alter the calendar start time.
+    final annualMatch = RegExp(r'^A<([^>]+)>$').firstMatch(normalized);
+    if (annualMatch != null) {
+      final annualCode = annualMatch.group(1)!;
+      final timeMatch = RegExp(r'(\d{3,4})').firstMatch(annualCode);
+      if (timeMatch == null) {
+        throw FormatException('No annual-leave start time found in "$raw"');
+      }
+      final digits = timeMatch.group(1)!.padLeft(4, '0');
+      final hour = int.parse(digits.substring(0, 2));
+      final minute = int.parse(digits.substring(2, 4));
+      if (hour > 23 || minute > 59) {
+        throw FormatException('Invalid annual-leave start time in "$raw"');
+      }
       return ParsedShift(
         raw: raw,
-        startMinutes: null,
-        baseDurationMinutes: 0,
-        shiftType: ShiftType.dayOff,
+        startMinutes: hour * 60 + minute,
+        baseDurationMinutes: 8 * 60,
+        shiftType: ShiftType.annualLeave,
         flexType: FlexType.none,
         isSupervisor: false,
         isCic: false,

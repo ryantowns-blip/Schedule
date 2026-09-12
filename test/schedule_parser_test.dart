@@ -18,13 +18,18 @@ void main() {
   });
 
   test('parses overtime shift', () {
-    final shift = parser.parse(r'$1400');
+    final shift = parser.parse(String.fromCharCode(36) + '1400');
     expect(shift.isOvertime, isTrue);
   });
 
-  test('late flex starts 15 minutes late', () {
-    final shift = parser.parse('L1400');
-    expect(shift.effectiveStartMinutes, 14 * 60 + 15);
+  test('late flex uses time written in shift name', () {
+    final shift = parser.parse('0615L');
+    expect(shift.effectiveStartMinutes, 6 * 60 + 15);
+  });
+
+  test('q flex uses time written in shift name', () {
+    final shift = parser.parse('0715Q');
+    expect(shift.effectiveStartMinutes, 7 * 60 + 15);
   });
 
   test('xtra before adds two hours before', () {
@@ -37,6 +42,14 @@ void main() {
     final shift = parser.parse('1400Xtra');
     expect(shift.effectiveStartMinutes, 14 * 60);
     expect(shift.effectiveEndMinutes, 24 * 60);
+  });
+
+  test('calculates scheduled overtime hours from WMT codes', () {
+    expect(parser.parse('1300L' + String.fromCharCode(36)).scheduledOvertimeMinutes, 8 * 60);
+    expect(parser.parse('Xtra1400').scheduledOvertimeMinutes, 2 * 60);
+    expect(parser.parse('1400Xtra').scheduledOvertimeMinutes, 2 * 60);
+    expect(parser.parse('Xt1400ra').scheduledOvertimeMinutes, 2 * 60);
+    expect(parser.parse('1300LS').scheduledOvertimeMinutes, 0);
   });
 
   test('overnight shifts can exceed midnight', () {

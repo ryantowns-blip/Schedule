@@ -1,0 +1,158 @@
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
+import '../models/upcoming_leave.dart';
+
+class ScreenshotLeaveImportResult {
+  const ScreenshotLeaveImportResult({required this.entries, required this.unrecognizedLines, required this.rawText});
+  final List<UpcomingLeaveEntry> entries;
+  final List<String> unrecognizedLines;
+  final String rawText;
+}
+
+class _PendingLeaveRow {
+  _PendingLeaveRow(this.date, this.type, this.sourceLine);
+  final DateTime date;
+  String? type;
+  final String sourceLine;
+}
+
+class ScreenshotLeaveImporter {
+  const ScreenshotLeaveImporter();
+
+  ScreenshotLeaveImportResult filterUpcoming(
+    ScreenshotLeaveImportResult result, {
+    DateTime? now,
+  }) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final entries = result.entries.where((entry) {
+      final date = DateTime(entry.date.year, entry.date.month, entry.date.day);
+      return !date.isBefore(today);
+    }).toList();
+    final unresolved = result.unrecognizedLines.where((line) {
+      if (line.toLowerCase().contains("today's date")) return false;
+      final date = _findDate(line);
+      if (date == null) return false;
+      return !DateTime(date.year, date.month, date.day).isBefore(today);
+    }).toList();
+    return ScreenshotLeaveImportResult(
+      entries: entries,
+      unrecognizedLines: unresolved,
+      rawText: result.rawText,
+    );
+  }
+
+  Future<ScreenshotLeaveImportResult> importFiles(List<String> paths) async {
+    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      final entries = <UpcomingLeaveEntry>[];
+      final unresolved = <String>[];
+      final raw = StringBuffer();
+      for (final path in paths) {
+        final recognized = await recognizer.processImage(InputImage.fromFilePath(path));
+        raw.writeln(recognized.text);
+        final parsed = parseRecognizedText(recognized.text);
+        entries.addAll(parsed.$1);
+        unresolved.addAll(parsed.$2);
+      }
+      final byDate = <String, UpcomingLeaveEntry>{};
+      for (final entry in entries) {
+        final key = '${entry.date.year}-${entry.date.month}-${entry.date.day}-${entry.type.toLowerCase()}';
+        byDate[key] = entry;
+      }
+      final output = byDate.values.toList()..sort((a, b) => a.date.compareTo(b.date));
+      return ScreenshotLeaveImportResult(entries: output, unrecognizedLines: unresolved, rawText: raw.toString().trim());
+    } finally {
+      await recognizer.close();
+    }
+  }
+
+  /// Parses OCR text without requiring an image. WMT's narrow table borders are
+  /// commonly recognized as |, l, I, or doubled punctuation immediately beside
+  /// a date/status, so parsing deliberately does not require word boundaries
+  /// around the date and tolerates those separators.
+  (List<UpcomingLeaveEntry>, List<String>) parseRecognizedText(String text) {
+    final entries = <UpcomingLeaveEntry>[];
+    final unresolved = <String>[];
+    final pending = <_PendingLeaveRow>[];
+
+    for (final original in text.split(RegExp(r'\r?\n'))) {
+      final line = original.trim();
+      if (line.isEmpty) continue;
+      final date = _findDate(line);
+      final type = _findType(line);
+      final status = _findStatus(line);
+
+      if (date != null && status != null) {
+        entries.add(UpcomingLeaveEntry(date: date, type: type ?? 'Annual', status: status));
+        continue;
+      }
+      if (date != null) {
+        pending.add(_PendingLeaveRow(date, type, line));
+        continue;
+      }
+
+      // WMT is a table. ML Kit frequently reads the whole date/type column
+      // before the status column, so retain every pending row and consume
+      // statuses in row order instead of discarding the previous date whenever
+      // another date is encountered.
+      if (status != null && pending.isNotEmpty) {
+        final row = pending.removeAt(0);
+        entries.add(UpcomingLeaveEntry(date: row.date, type: type ?? row.type ?? 'Annual', status: status));
+        continue;
+      }
+
+      // A narrow table border can make the leave type its own OCR line. Attach
+      // it to the most recently observed row that still lacks a type.
+      if (type != null && pending.isNotEmpty) {
+        for (var i = pending.length - 1; i >= 0; i--) {
+          if (pending[i].type == null) {
+            pending[i].type = type;
+            break;
+          }
+        }
+        continue;
+      }
+      if (_looksLeaveLike(line)) unresolved.add(line);
+    }
+    for (final row in pending) {
+      if (!unresolved.contains(row.sourceLine)) unresolved.add(row.sourceLine);
+    }
+    return (entries, unresolved);
+  }
+
+  DateTime? _findDate(String line) {
+    // No \b anchors: OCR often emits "11/15/2026l" where the trailing l is a
+    // misread vertical table border. Accept leading zeros and either / or -.
+    final match = RegExp(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})').firstMatch(line);
+    if (match == null) return null;
+    final month = int.tryParse(match.group(1) ?? '');
+    final day = int.tryParse(match.group(2) ?? '');
+    var year = int.tryParse(match.group(3) ?? '');
+    if (month == null || day == null || year == null) return null;
+    if (year < 100) year += 2000;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    final date = DateTime(year, month, day);
+    if (date.year != year || date.month != month || date.day != day) return null;
+    return date;
+  }
+
+  String? _findStatus(String line) {
+    final lower = line.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+    if (lower.contains('approved')) return 'Approved';
+    if (lower.contains('denied') || lower.contains('disapproved')) return 'Denied';
+    if (lower.contains('pending')) return 'Pending';
+    if (lower.contains('cancelled') || lower.contains('canceled')) return 'Cancelled';
+    return null;
+  }
+
+  String? _findType(String line) {
+    final lower = line.toLowerCase();
+    if (lower.contains('annual') || RegExp(r'(^|[^a-z])AL([^a-z]|$)', caseSensitive: false).hasMatch(line)) return 'Annual';
+    if (lower.contains('holiday') || RegExp(r'(^|[^a-z])HL([^a-z]|$)', caseSensitive: false).hasMatch(line)) return 'Holiday';
+    if (lower.contains('sick') || RegExp(r'(^|[^a-z])SL([^a-z]|$)', caseSensitive: false).hasMatch(line)) return 'Sick';
+    return null;
+  }
+
+  bool _looksLeaveLike(String line) => _findDate(line) != null || _findStatus(line) != null || _findType(line) != null;
+}

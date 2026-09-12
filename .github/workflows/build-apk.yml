@@ -1,9 +1,17 @@
-name: Build Android APK
+name: Build Android APK # v0.10.16 beta cleanup
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
+  push:
+    branches:
+      - main
+      - 'v*'
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -13,7 +21,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -30,17 +38,43 @@ jobs:
             flutter create --platforms=android --project-name atc_schedule_manager .
           fi
 
+      - name: Configure Android app
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          BUILD_FILE=android/app/build.gradle.kts
+          if ! grep -q 'READ_CALENDAR' "$MANIFEST"; then
+            sed -i '/<manifest/a\    <uses-permission android:name="android.permission.READ_CALENDAR" />\n    <uses-permission android:name="android.permission.WRITE_CALENDAR" />' "$MANIFEST"
+          fi
+          if ! grep -q 'READ_MEDIA_IMAGES' "$MANIFEST"; then
+            sed -i '/<manifest/a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />' "$MANIFEST"
+          fi
+          if grep -q 'minSdk = flutter.minSdkVersion' "$BUILD_FILE"; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
+          fi
+          if ! grep -q 'isMinifyEnabled = false' "$BUILD_FILE"; then
+            sed -i '/release {/a\\            isMinifyEnabled = false' "$BUILD_FILE"
+          fi
+          if ! grep -q 'isShrinkResources = false' "$BUILD_FILE"; then
+            sed -i '/release {/a\\            isShrinkResources = false' "$BUILD_FILE"
+          fi
+          grep -q 'isMinifyEnabled = false' "$BUILD_FILE"
+          sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager Lite"/' "$MANIFEST"
+          sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
+          grep -q 'android:label="ATC Schedule Manager Lite"' "$MANIFEST"
+          grep -q 'applicationId = "com.ryantowns.atcschedulemanager.lite"' "$BUILD_FILE"
+          grep -q 'READ_MEDIA_IMAGES' "$MANIFEST"
+
       - name: Get dependencies
         run: flutter pub get
 
       - name: Run tests
         run: flutter test
 
-      - name: Build debug APK
-        run: flutter build apk --debug
+      - name: Build ARM64 release APK
+        run: flutter build apk --release --split-per-abi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: atc-schedule-manager-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: atc-schedule-manager-lite-v0.10.16-arm64-release-apk
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
