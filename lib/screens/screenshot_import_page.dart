@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/dated_shift.dart';
@@ -118,9 +117,10 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
         _pdfFileName = file.name;
         _deleteSourceScreenshots = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Could not prepare the selected PDF: $e');
+      setState(() => _error =
+          'Couldn\'t open that PDF. Try exporting it from WMT again or import screenshots instead.');
       return;
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -143,11 +143,11 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
         _reviewedShifts = List<DatedShift>.from(result.shifts);
         _reviewedWarnings = result.unrecognizedLines.isEmpty;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _error = _usingPdf
-          ? 'Could not read the selected PDF: $e'
-          : 'Could not read the selected screenshots: $e');
+          ? 'Couldn\'t read that PDF. Make sure it contains a clearly visible WMT schedule.'
+          : 'Couldn\'t read those screenshots. Make sure each image clearly shows the dates and shift codes, then try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -259,8 +259,33 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              'Screenshots are the quickest option. You can also import a PDF saved from WMT. Everything is processed locally on this device.',
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Import your schedule',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('1. Capture each WMT schedule with the dates and shift codes visible.'),
+                    const SizedBox(height: 5),
+                    const Text('2. Select all screenshots for the schedule you want to save.'),
+                    const SizedBox(height: 5),
+                    const Text('3. Review the recognized entries before importing.'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(Icons.lock_outline, size: 18, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 7),
+                        const Expanded(child: Text('Images are processed only on this device.')),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
@@ -372,44 +397,6 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
               ],
-              const SizedBox(height: 8),
-              Card(
-                child: ExpansionTile(
-                  leading: const Icon(Icons.bug_report_outlined),
-                  title: const Text('Import diagnostics (temporary)'),
-                  subtitle: const Text('Open and copy this when schedule recognition is incomplete.'),
-                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: FilledButton.tonalIcon(
-                        onPressed: () async {
-                          await Clipboard.setData(ClipboardData(text: _result!.diagnostics));
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Import diagnostics copied')),
-                          );
-                        },
-                        icon: const Icon(Icons.copy_outlined),
-                        label: const Text('Copy diagnostics'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 320),
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: SingleChildScrollView(
-                        child: SelectableText(
-                          _result!.diagnostics,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               if (!_usingPdf) ...[
                 const SizedBox(height: 8),
                 Card(
