@@ -287,9 +287,10 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
           }
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _message = 'Could not read leave screenshots: $e');
+      setState(() => _message =
+          'Couldn\'t read those leave screenshots. Make sure the dates, types, and statuses are clearly visible, then try again.');
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -308,9 +309,10 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       final result = await _calendar.syncApprovedLeave(entries: approved, colorHex: hex);
       if (!mounted) return;
       setState(() => _message = 'Calendar sync complete: ${result.created} added, ${result.skipped} already present.');
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _message = 'Could not sync leave to calendar: $e');
+      setState(() => _message =
+          'Calendar sync couldn\'t be completed. Check calendar permission and try again.');
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
