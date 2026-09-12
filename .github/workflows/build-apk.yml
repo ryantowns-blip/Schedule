@@ -51,9 +51,17 @@ jobs:
           if grep -q 'minSdk = flutter.minSdkVersion' "$BUILD_FILE"; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
           fi
-          if ! grep -q 'text-recognition-chinese' "$BUILD_FILE"; then
-            sed -i '$i\\dependencies {\\n    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")\\n    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")\\n    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")\\n    implementation("com.google.mlkit:text-recognition-korean:16.0.1")\\n}' "$BUILD_FILE"
+          PROGUARD_FILE=android/app/proguard-rules.pro
+          printf '%s\\n' \\
+            '-dontwarn com.google.mlkit.vision.text.chinese.**' \\
+            '-dontwarn com.google.mlkit.vision.text.devanagari.**' \\
+            '-dontwarn com.google.mlkit.vision.text.japanese.**' \\
+            '-dontwarn com.google.mlkit.vision.text.korean.**' \\
+            > "$PROGUARD_FILE"
+          if ! grep -q 'proguard-rules.pro' "$BUILD_FILE"; then
+            sed -i '/release {/a\\            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' "$BUILD_FILE"
           fi
+          grep -q 'proguardFiles' "$BUILD_FILE"
           sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager Lite"/' "$MANIFEST"
           sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
           grep -q 'android:label="ATC Schedule Manager Lite"' "$MANIFEST"
