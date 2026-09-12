@@ -71,4 +71,27 @@ void main() {
     expect(projection.annualPlanned, 5);
     expect(projection.projectedAnnual, 95);
   });
+  test('counts manual leave used on the starting balance date', () {
+    final settings = LeaveBalanceSettings(
+      effectiveDate: DateTime(2026, 9, 12),
+      annualBalance: 100,
+      sickBalance: 80,
+      annualAccrualPerPayPeriod: 0,
+      sickAccrualPerPayPeriod: 0,
+    );
+    final projection = service.calculate(
+      settings: settings,
+      usage: [
+        LeaveUsage(
+          id: 'manual-same-day',
+          date: DateTime(2026, 9, 12),
+          kind: LeaveKind.annual,
+          hours: 4,
+        ),
+      ],
+    );
+    expect(projection.annualPlanned, 4);
+    expect(projection.currentAnnual, 96);
+    expect(projection.projectedAnnual, 96);
+  });
 }
