@@ -51,15 +51,10 @@ jobs:
           if grep -q 'minSdk = flutter.minSdkVersion' "$BUILD_FILE"; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
           fi
-          PROGUARD_FILE=android/app/proguard-rules.pro
-          echo '-dontwarn com.google.mlkit.vision.text.chinese.**' > "$PROGUARD_FILE"
-          echo '-dontwarn com.google.mlkit.vision.text.devanagari.**' >> "$PROGUARD_FILE"
-          echo '-dontwarn com.google.mlkit.vision.text.japanese.**' >> "$PROGUARD_FILE"
-          echo '-dontwarn com.google.mlkit.vision.text.korean.**' >> "$PROGUARD_FILE"
-          if ! grep -q 'proguard-rules.pro' "$BUILD_FILE"; then
-            sed -i '/release {/a\\            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' "$BUILD_FILE"
+          if ! grep -q 'isMinifyEnabled = false' "$BUILD_FILE"; then
+            sed -i '/release {/a\\            isShrinkResources = false\\n            isMinifyEnabled = false' "$BUILD_FILE"
           fi
-          grep -q 'proguardFiles' "$BUILD_FILE"
+          grep -q 'isMinifyEnabled = false' "$BUILD_FILE"
           sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager Lite"/' "$MANIFEST"
           sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
           grep -q 'android:label="ATC Schedule Manager Lite"' "$MANIFEST"
