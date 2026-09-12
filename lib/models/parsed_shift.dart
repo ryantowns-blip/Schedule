@@ -33,6 +33,14 @@ class ParsedShift {
   bool get isOvertime => shiftType == ShiftType.overtime;
   bool get hasXtraBefore => overtimeBeforeMinutes > 0;
   bool get hasXtraAfter => overtimeAfterMinutes > 0;
+
+  /// Scheduled overtime represented by this WMT shift.
+  /// A pure $ shift is eight hours. Xtra time on an otherwise regular shift
+  /// is counted from its before/after extensions (including split Xt…ra).
+  int get scheduledOvertimeMinutes => isOvertime
+      ? baseDurationMinutes
+      : overtimeBeforeMinutes + overtimeAfterMinutes;
+
   int get durationMinutes =>
       baseDurationMinutes + overtimeBeforeMinutes + overtimeAfterMinutes;
 
