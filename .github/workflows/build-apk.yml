@@ -1,4 +1,4 @@
-name: Build Android APK # v0.10.14 rebuild
+name: Build Android APK # v0.10.15 rebuild
 
 on:
   workflow_dispatch:
