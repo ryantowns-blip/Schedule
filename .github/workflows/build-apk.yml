@@ -52,7 +52,7 @@ jobs:
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
           fi
           if ! grep -q 'text-recognition-chinese' "$BUILD_FILE"; then
-            sed -i '$i\\dependencies { implementation("com.google.mlkit:text-recognition-chinese:16.0.1") }' "$BUILD_FILE"
+            sed -i '$i\\dependencies {\\n    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")\\n    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")\\n    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")\\n    implementation("com.google.mlkit:text-recognition-korean:16.0.1")\\n}' "$BUILD_FILE"
           fi
           sed -i 's/android:label="atc_schedule_manager"/android:label="ATC Schedule Manager Lite"/' "$MANIFEST"
           sed -i 's/applicationId = "com.example.atc_schedule_manager"/applicationId = "com.ryantowns.atcschedulemanager.lite"/' "$BUILD_FILE"
