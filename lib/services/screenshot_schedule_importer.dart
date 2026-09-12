@@ -432,8 +432,272 @@ class ScreenshotScheduleImporter {
     final normalized = line
         .replaceAll('O', '0')
         .replaceAll('o', '0')
-        .replaceAll('Š', 'S')
-        .replaceAll('š', 's')
+        .replaceAll('Š', r'
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
+    final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
+    if (annual != null) {
+      final parsed = _tryParse('A<${annual.group(1)}>');
+      if (parsed != null) return parsed;
+    }
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      final token = raw.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+      final parsed = _tryParse(token);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  ParsedShift? _tryParse(String token) {
+    if (token.isEmpty) return null;
+    final fixed = _repairCommonOcr(token);
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _repairCommonOcr(String token) {
+    var value = token.trim().replaceAll('Š', r'
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+)
+        .replaceAll('š', r'
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
+    final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
+    if (annual != null) {
+      final parsed = _tryParse('A<${annual.group(1)}>');
+      if (parsed != null) return parsed;
+    }
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      final token = raw.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+      final parsed = _tryParse(token);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  ParsedShift? _tryParse(String token) {
+    if (token.isEmpty) return null;
+    final fixed = _repairCommonOcr(token);
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _repairCommonOcr(String token) {
+    var value = token.trim().replaceAll('Š', 'S').replaceAll('š', 's');
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+)
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
+    final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
+    if (annual != null) {
+      final parsed = _tryParse('A<${annual.group(1)}>');
+      if (parsed != null) return parsed;
+    }
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      final token = raw.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+      final parsed = _tryParse(token);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  ParsedShift? _tryParse(String token) {
+    if (token.isEmpty) return null;
+    final fixed = _repairCommonOcr(token);
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _repairCommonOcr(String token) {
+    var value = token.trim().replaceAll('Š', 'S').replaceAll('š', 's');
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+).replaceAll('š', r'
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+)
+        .replaceAll('š', r'
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
+    final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
+    if (annual != null) {
+      final parsed = _tryParse('A<${annual.group(1)}>');
+      if (parsed != null) return parsed;
+    }
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      final token = raw.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+      final parsed = _tryParse(token);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  ParsedShift? _tryParse(String token) {
+    if (token.isEmpty) return null;
+    final fixed = _repairCommonOcr(token);
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _repairCommonOcr(String token) {
+    var value = token.trim().replaceAll('Š', 'S').replaceAll('š', 's');
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+)
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
+    final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
+    if (annual != null) {
+      final parsed = _tryParse('A<${annual.group(1)}>');
+      if (parsed != null) return parsed;
+    }
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      final token = raw.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+      final parsed = _tryParse(token);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  ParsedShift? _tryParse(String token) {
+    if (token.isEmpty) return null;
+    final fixed = _repairCommonOcr(token);
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _repairCommonOcr(String token) {
+    var value = token.trim().replaceAll('Š', 'S').replaceAll('š', 's');
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+);
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+)
+        .replaceAll('š', r'
+        .replaceAll('—', '-')
+        .replaceAll('–', '-');
+    final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
+    if (annual != null) {
+      final parsed = _tryParse('A<${annual.group(1)}>');
+      if (parsed != null) return parsed;
+    }
+    for (final raw in normalized.split(RegExp(r'\s+'))) {
+      final token = raw.replaceAll(RegExp(r'^[^A-Za-z0-9$]+|[^A-Za-z0-9$]+$'), '');
+      final parsed = _tryParse(token);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  ParsedShift? _tryParse(String token) {
+    if (token.isEmpty) return null;
+    final fixed = _repairCommonOcr(token);
+    if (!RegExp(
+      r'^(?:X|SL|HL|A<[^>]+>|[LSCQ$]*(?:Xtra)?\d{3,4}[LSCQ$]*(?:Xtra)?|Xt\d{3,4}ra)$',
+      caseSensitive: false,
+    ).hasMatch(fixed)) {
+      return null;
+    }
+    try {
+      return parser.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _repairCommonOcr(String token) {
+    var value = token.trim().replaceAll('Š', 'S').replaceAll('š', 's');
+    if (RegExp(r'\d').hasMatch(value)) value = value.replaceAll('O', '0').replaceAll('o', '0');
+    return value;
+  }
+
+  bool _looksScheduleLike(String line) =>
+      RegExp(r'\d{3,4}|\b(?:X|SL|HL)\b|A\s*[<\[]', caseSensitive: false).hasMatch(line);
+}
+)
         .replaceAll('—', '-')
         .replaceAll('–', '-');
     final annual = RegExp(r'A\s*[<\[]\s*([A-Za-z0-9$]+)\s*[>\]]', caseSensitive: false).firstMatch(normalized);
