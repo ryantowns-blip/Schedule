@@ -216,6 +216,20 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     setState(() => _displaySettings = result);
   }
 
+  void _showAbout() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'ATC Schedule Manager Lite',
+      applicationVersion: '0.10.16 beta',
+      applicationIcon: const Icon(Icons.calendar_month_outlined, size: 42),
+      children: const [
+        Text(
+          'Import WMT schedule and leave screenshots, review the results, and add approved entries to your calendar. Screenshots are processed only on this device.',
+        ),
+      ],
+    );
+  }
+
   Future<void> _openCalendarSync({bool changesOnly = false}) async {
     final shifts = changesOnly ? _changedShifts() : _shifts;
     if (shifts.isEmpty) return;
@@ -249,14 +263,34 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
             icon: const Icon(Icons.beach_access_outlined),
           ),
           IconButton(
-            tooltip: 'Settings',
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined),
-          ),
-          IconButton(
             tooltip: 'Import screenshots',
             onPressed: _importScreenshots,
             icon: const Icon(Icons.add_photo_alternate_outlined),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'More options',
+            onSelected: (value) {
+              if (value == 'settings') _openSettings();
+              if (value == 'about') _showAbout();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.settings_outlined),
+                  title: Text('Settings'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'about',
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('About'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -266,21 +300,22 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.shield_outlined),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'Lite screenshot edition: this app does not log into WMT or connect to the FAA website. Import screenshots from your phone to update the schedule.',
-                            ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.shield_outlined, size: 20),
+                        SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            'Private by design: screenshots stay on this device. The app never signs in to WMT.',
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                   if (_error != null) ...[
