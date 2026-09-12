@@ -36,6 +36,7 @@ class _ShiftCandidate {
 class ScreenshotScheduleImporter {
   const ScreenshotScheduleImporter({this.parser = const ScheduleParser()});
   final ScheduleParser parser;
+  static final RegExp _datePattern = RegExp(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})');
 
   Future<ScreenshotImportResult> importFiles(List<String> paths) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
@@ -123,26 +124,14 @@ class ScreenshotScheduleImporter {
           lineBox.right,
           lineBox.bottom,
         );
-        // ML Kit sometimes keeps a complete date as the line text while
-        // splitting its elements into fragments such as "9/" and "6/2026".
-        // Keep both representations; duplicates are harmless and are reduced
-        // to medians below.
-        final lineDate = _findDate(lineItem.text);
-        if (lineDate != null) dates.add((lineItem, lineDate));
-        final lineShift = _findShift(lineItem.text);
-        if (lineShift != null) {
-          candidates.add(_ShiftCandidate(lineItem, lineShift, fromLine: true));
-        }
+        dates.addAll(_dateFragments(lineItem));
+        candidates.addAll(_shiftFragments(lineItem, fromLine: true));
 
         for (final element in line.elements) {
           final box = element.boundingBox;
           final item = _OcrItem(element.text.trim(), box.left, box.top, box.right, box.bottom);
-          final date = _findDate(item.text);
-          if (date != null) dates.add((item, date));
-          final shift = _findShift(item.text);
-          if (shift != null) {
-            candidates.add(_ShiftCandidate(item, shift, fromLine: false));
-          }
+          dates.addAll(_dateFragments(item));
+          candidates.addAll(_shiftFragments(item, fromLine: false));
         }
       }
     }
@@ -312,6 +301,45 @@ class ScreenshotScheduleImporter {
     return resultByDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
+  List<(_OcrItem, DateTime)> _dateFragments(_OcrItem item) {
+    final matches = _datePattern.allMatches(item.text).toList();
+    if (matches.isEmpty || item.text.isEmpty) return const [];
+    final output = <(_OcrItem, DateTime)>[];
+    for (final match in matches) {
+      final date = _dateFromMatch(match);
+      if (date != null) output.add((_fragmentItem(item, match.start, match.end), date));
+    }
+    return output;
+  }
+
+  List<_ShiftCandidate> _shiftFragments(_OcrItem item, {required bool fromLine}) {
+    if (item.text.isEmpty) return const [];
+    final output = <_ShiftCandidate>[];
+    // A line can contain multiple independently positioned WMT cells, e.g.
+    // "0500L 0500L$". Preserve each token's approximate horizontal location
+    // instead of assigning the first shift to the width of the entire row.
+    for (final match in RegExp(r'\S+').allMatches(item.text)) {
+      final shift = _findShift(match.group(0)!);
+      if (shift == null) continue;
+      output.add(
+        _ShiftCandidate(
+          _fragmentItem(item, match.start, match.end),
+          shift,
+          fromLine: fromLine,
+        ),
+      );
+    }
+    return output;
+  }
+
+  _OcrItem _fragmentItem(_OcrItem source, int start, int end) {
+    final length = source.text.length;
+    if (length == 0) return source;
+    final left = source.left + source.width * start / length;
+    final right = source.left + source.width * end / length;
+    return _OcrItem(source.text.substring(start, end), left, source.top, right, source.bottom);
+  }
+
   List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {
     if (parsed.isEmpty) return const [];
     final parsedDates = parsed.map((e) => _dateKey(e.date)).toSet();
@@ -364,15 +392,21 @@ class ScreenshotScheduleImporter {
   }
 
   DateTime? _findDate(String line) {
-    final slash = RegExp(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b').firstMatch(line);
+    final slash = _datePattern.firstMatch(line);
     if (slash == null) return null;
+    return _dateFromMatch(slash);
+  }
+
+  DateTime? _dateFromMatch(RegExpMatch slash) {
     var year = int.tryParse(slash.group(3) ?? '');
     final month = int.tryParse(slash.group(1) ?? '');
     final day = int.tryParse(slash.group(2) ?? '');
     if (year == null || month == null || day == null) return null;
     if (year < 100) year += 2000;
     if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    return DateTime(year, month, day);
+    final date = DateTime(year, month, day);
+    if (date.year != year || date.month != month || date.day != day) return null;
+    return date;
   }
 
   ParsedShift? _findShift(String line) {
