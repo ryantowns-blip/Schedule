@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models/dated_shift.dart';
 import 'models/schedule_display_settings.dart';
 import 'screens/calendar_sync_page.dart';
+import 'screens/leave_balance_page.dart';
 import 'screens/pay_period_schedule_view.dart';
 import 'screens/screenshot_import_page.dart';
 import 'screens/settings_page.dart';
@@ -149,6 +150,12 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     );
   }
 
+  Future<void> _openLeaveBalance() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const LeaveBalancePage()),
+    );
+  }
+
   List<String> _detectScheduleChanges(
     List<DatedShift> previous,
     List<DatedShift> current,
@@ -218,7 +225,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     showAboutDialog(
       context: context,
       applicationName: 'Web Schedule Manager',
-      applicationVersion: '0.11.0 beta',
+      applicationVersion: '0.12.0 beta',
       applicationIcon: const Icon(Icons.calendar_month_outlined, size: 42),
       children: const [
         Text(
@@ -349,6 +356,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                       onImport: _importScreenshots,
                       onLeave: _openUpcomingLeave,
                       onCalendar: () => _openCalendarSync(),
+                      onBalance: _openLeaveBalance,
                     ),
                     const SizedBox(height: 16),
                     Card(
@@ -434,6 +442,15 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                         label: const Text('Import Upcoming Leave'),
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openLeaveBalance,
+                        icon: const Icon(Icons.account_balance_wallet_outlined),
+                        label: const Text('Leave Balance'),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -447,11 +464,13 @@ class _HomeActions extends StatelessWidget {
     required this.onImport,
     required this.onLeave,
     required this.onCalendar,
+    required this.onBalance,
   });
 
   final VoidCallback onImport;
   final VoidCallback onLeave;
   final VoidCallback onCalendar;
+  final VoidCallback onBalance;
 
   @override
   Widget build(BuildContext context) {
@@ -482,6 +501,12 @@ class _HomeActions extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onBalance,
+          icon: const Icon(Icons.account_balance_wallet_outlined),
+          label: const Text('Leave Balance'),
         ),
       ],
     );
