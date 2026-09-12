@@ -369,29 +369,122 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
                       label: const Text('Import Leave Screenshots'),
                     ),
                   ] else ...[
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                        child: Text('$approvedCount approved leave day${approvedCount == 1 ? '' : 's'}. Existing Annual Leave calendar entries are checked before anything is added.'),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF3FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFC9DDF7)),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Showing future leave imported from WMT',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Sick leave is not shown. Only approved leave can be added to your calendar.',
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    for (final entry in _entries)
-                      Card(
-                        child: ListTile(
-                          dense: true,
-                          title: Text(_date(entry.date)),
-                          subtitle: Text(entry.type),
-                          trailing: Text(entry.status, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        ),
-                      ),
                     const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: approvedCount == 0 || _syncing ? null : _syncApproved,
-                      icon: _syncing
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.event_available_outlined),
-                      label: Text('Add Approved Leave to Calendar ($approvedCount)'),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Theme.of(context).dividerColor),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        children: [
+                          Container(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+                            child: const Row(
+                              children: [
+                                SizedBox(width: 34),
+                                Expanded(flex: 5, child: Text('DATE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                                Expanded(flex: 4, child: Text('TYPE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                                Expanded(flex: 4, child: Text('STATUS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                              ],
+                            ),
+                          ),
+                          for (var index = 0; index < _entries.length; index++) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 34,
+                                    child: Icon(
+                                      _entries[index].isApproved ? Icons.check_box : Icons.check_box_outline_blank,
+                                      size: 21,
+                                      color: _entries[index].isApproved
+                                          ? Theme.of(context).colorScheme.primary
+                                          : Theme.of(context).disabledColor,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 5,
+                                    child: Text(
+                                      _date(_entries[index].date),
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  Expanded(flex: 4, child: Text(_entries[index].type)),
+                                  Expanded(
+                                    flex: 4,
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _entries[index].isApproved
+                                              ? const Color(0xFFDDF5E5)
+                                              : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          _entries[index].status,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: _entries[index].isApproved
+                                                ? const Color(0xFF247A42)
+                                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (index != _entries.length - 1)
+                              const Divider(height: 1, indent: 42),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '$approvedCount leave day${approvedCount == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: approvedCount == 0 || _syncing ? null : _syncApproved,
+                        icon: _syncing
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.event_available_outlined),
+                        label: Text('Add to Calendar ($approvedCount)'),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
