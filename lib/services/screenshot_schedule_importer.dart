@@ -83,6 +83,12 @@ class ScreenshotScheduleImporter {
           lineBox.right,
           lineBox.bottom,
         );
+        // ML Kit sometimes keeps a complete date as the line text while
+        // splitting its elements into fragments such as "9/" and "6/2026".
+        // Keep both representations; duplicates are harmless and are reduced
+        // to medians below.
+        final lineDate = _findDate(lineItem.text);
+        if (lineDate != null) dates.add((lineItem, lineDate));
         final lineShift = _findShift(lineItem.text);
         if (lineShift != null) {
           candidates.add(_ShiftCandidate(lineItem, lineShift, fromLine: true));
@@ -189,7 +195,42 @@ class ScreenshotScheduleImporter {
     final row1Top = row1Y - rowHeight * 0.05;
     final row1Bottom = row1Y + rowHeight * 0.95;
 
-    final result = <DatedShift>[];
+    final resultByDay = <String, DatedShift>{};
+
+    // Prefer an observed date's own position over the inferred column center.
+    // On real WMT screenshots, proportional date text and partially cropped
+    // columns can move the inferred center far enough to reject a perfectly
+    // readable shift.  The shift is printed below the date in the same cell,
+    // so this nearest-neighbour pass is the strongest relationship available.
+    for (final entry in tableDates) {
+      final dateItem = entry.$1;
+      final date = DateTime(entry.$2.year, entry.$2.month, entry.$2.day);
+      final offset = date.difference(start).inDays;
+      if (offset < 0 || offset > 13) continue;
+      final maxVerticalGap = rowHeight.abs() * 0.90;
+      final nearby = candidates.where((candidate) {
+        final item = candidate.item;
+        final verticalGap = item.centerY - dateItem.centerY;
+        if (verticalGap < -rowHeight.abs() * 0.05 || verticalGap > maxVerticalGap) return false;
+        if ((item.centerX - dateItem.centerX).abs() > spacing.abs() * 0.55) return false;
+        if (candidate.fromLine && item.width > spacing.abs() * 1.35) return false;
+        return true;
+      }).toList();
+      nearby.sort((a, b) {
+        double score(_ShiftCandidate value) {
+          final dx = (value.item.centerX - dateItem.centerX).abs() / spacing.abs();
+          final dy = (value.item.centerY - dateItem.centerY).abs() / rowHeight.abs();
+          return dx * 2 + dy + (value.fromLine ? 0.1 : 0);
+        }
+        return score(a).compareTo(score(b));
+      });
+      if (nearby.isNotEmpty) {
+        resultByDay[_dateKey(date)] = DatedShift(date: date, shift: nearby.first.shift);
+      }
+    }
+
+    // Fill dates whose printed date was missed or fragmented by OCR from the
+    // reconstructed grid. Never replace a stronger observed-date match.
     for (var offset = 0; offset < 14; offset++) {
       final row = offset ~/ 7;
       final column = offset % 7;
@@ -222,10 +263,13 @@ class ScreenshotScheduleImporter {
       });
 
       final date = start.add(Duration(days: offset));
-      result.add(DatedShift(date: date, shift: inCell.first.shift));
+      resultByDay.putIfAbsent(
+        _dateKey(date),
+        () => DatedShift(date: date, shift: inCell.first.shift),
+      );
     }
 
-    return result..sort((a, b) => a.date.compareTo(b.date));
+    return resultByDay.values.toList()..sort((a, b) => a.date.compareTo(b.date));
   }
 
   List<String> _spatialUnrecognized(RecognizedText recognized, List<DatedShift> parsed) {

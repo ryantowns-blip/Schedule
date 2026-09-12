@@ -20,6 +20,32 @@ void main() {
     expect(result.$1.single.status, 'Approved');
   });
 
+  test('pairs a WMT date/type column with a later status column', () {
+    final result = importer.parseRecognizedText('''
+11/15/2026| Annual
+10/13/2026| Annual
+10/12/2026|| Holiday
+08/19/2026| Sick
+Approved
+Pending
+Approved
+Denied
+''');
+    expect(result.$1, hasLength(4));
+    expect(result.$1.map((entry) => entry.status), ['Approved', 'Pending', 'Approved', 'Denied']);
+    expect(result.$1[2].type, 'Holiday');
+    expect(result.$1[3].type, 'Sick');
+    expect(result.$2, isEmpty);
+  });
+
+  test('attaches a type split onto its own OCR line', () {
+    final result = importer.parseRecognizedText('08/10/2026|\nSick\nApproved');
+    expect(result.$1, hasLength(1));
+    expect(result.$1.single.type, 'Sick');
+    expect(result.$1.single.status, 'Approved');
+    expect(result.$2, isEmpty);
+  });
+
   test('recognizes common leave abbreviations', () {
     final result = importer.parseRecognizedText('9/22/2026 AL Pending\n9/23/2026 HL Approved\n9/24/2026 SL Denied');
     expect(result.$1, hasLength(3));

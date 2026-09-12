@@ -9,6 +9,13 @@ class ScreenshotLeaveImportResult {
   final String rawText;
 }
 
+class _PendingLeaveRow {
+  _PendingLeaveRow(this.date, this.type, this.sourceLine);
+  final DateTime date;
+  String? type;
+  final String sourceLine;
+}
+
 class ScreenshotLeaveImporter {
   const ScreenshotLeaveImporter();
 
@@ -44,16 +51,7 @@ class ScreenshotLeaveImporter {
   (List<UpcomingLeaveEntry>, List<String>) parseRecognizedText(String text) {
     final entries = <UpcomingLeaveEntry>[];
     final unresolved = <String>[];
-    DateTime? pendingDate;
-    String? pendingType;
-    String? pendingLine;
-
-    void clearPending() { pendingDate = null; pendingType = null; pendingLine = null; }
-    void flushPendingForReview() {
-      final line = pendingLine;
-      if (line != null && line.isNotEmpty && !unresolved.contains(line)) unresolved.add(line);
-      clearPending();
-    }
+    final pending = <_PendingLeaveRow>[];
 
     for (final original in text.split(RegExp(r'\r?\n'))) {
       final line = original.trim();
@@ -63,24 +61,40 @@ class ScreenshotLeaveImporter {
       final status = _findStatus(line);
 
       if (date != null && status != null) {
-        if (pendingDate != null) flushPendingForReview();
         entries.add(UpcomingLeaveEntry(date: date, type: type ?? 'Annual', status: status));
         continue;
       }
       if (date != null) {
-        if (pendingDate != null) flushPendingForReview();
-        pendingDate = date; pendingType = type; pendingLine = line;
+        pending.add(_PendingLeaveRow(date, type, line));
         continue;
       }
-      final resolvedPendingDate = pendingDate;
-      if (resolvedPendingDate != null && status != null) {
-        entries.add(UpcomingLeaveEntry(date: resolvedPendingDate, type: type ?? pendingType ?? 'Annual', status: status));
-        clearPending();
+
+      // WMT is a table. ML Kit frequently reads the whole date/type column
+      // before the status column, so retain every pending row and consume
+      // statuses in row order instead of discarding the previous date whenever
+      // another date is encountered.
+      if (status != null && pending.isNotEmpty) {
+        final row = pending.removeAt(0);
+        entries.add(UpcomingLeaveEntry(date: row.date, type: type ?? row.type ?? 'Annual', status: status));
+        continue;
+      }
+
+      // A narrow table border can make the leave type its own OCR line. Attach
+      // it to the most recently observed row that still lacks a type.
+      if (type != null && pending.isNotEmpty) {
+        for (var i = pending.length - 1; i >= 0; i--) {
+          if (pending[i].type == null) {
+            pending[i].type = type;
+            break;
+          }
+        }
         continue;
       }
       if (_looksLeaveLike(line)) unresolved.add(line);
     }
-    if (pendingDate != null) flushPendingForReview();
+    for (final row in pending) {
+      if (!unresolved.contains(row.sourceLine)) unresolved.add(row.sourceLine);
+    }
     return (entries, unresolved);
   }
 
