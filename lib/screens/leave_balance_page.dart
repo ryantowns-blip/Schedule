@@ -16,6 +16,7 @@ class LeaveBalancePage extends StatefulWidget {
 class _LeaveBalancePageState extends State<LeaveBalancePage> {
   static const _scheduleEntriesKey = 'screenshot_schedule_entries';
   static const _leaveEntriesKey = 'screenshot_leave_entries_v1';
+  static const _manualEntriesKey = 'manual_leave_usage_v1';
 
   final _projectionService = const LeaveProjectionService();
   final _parser = const ScheduleParser();
@@ -26,7 +27,8 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
   final _carryoverLimit = TextEditingController(text: '240');
 
   DateTime _effectiveDate = DateTime.now();
-  List<LeaveUsage> _usage = const [];
+  List<LeaveUsage> _importedUsage = const [];
+  List<LeaveUsage> _manualUsage = const [];
   LeaveBalanceSettings? _settings;
   bool _loading = true;
 
@@ -50,6 +52,7 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
     final prefs = await SharedPreferences.getInstance();
     final saved = await LeaveBalanceSettings.load();
     final usage = <LeaveUsage>[];
+    final manualUsage = <LeaveUsage>[];
 
     for (final row in prefs.getStringList(_scheduleEntriesKey) ?? const <String>[]) {
       final separator = row.indexOf('|');
@@ -75,6 +78,24 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
       } catch (_) {}
     }
 
+    for (final row in prefs.getStringList(_manualEntriesKey) ?? const <String>[]) {
+      try {
+        final map = jsonDecode(row) as Map<String, dynamic>;
+        final date = DateTime.tryParse(map['date'] as String? ?? '');
+        final hours = (map['hours'] as num?)?.toDouble();
+        final kindName = map['kind'] as String? ?? '';
+        final id = map['id'] as String?;
+        if (date == null || hours == null || hours <= 0 || id == null) continue;
+        manualUsage.add(LeaveUsage(
+          id: id,
+          date: date,
+          hours: hours,
+          kind: kindName == LeaveKind.sick.name ? LeaveKind.sick : LeaveKind.annual,
+        ));
+      } catch (_) {}
+    }
+    manualUsage.sort((a, b) => a.date.compareTo(b.date));
+
     if (saved != null) {
       _effectiveDate = saved.effectiveDate;
       _annualBalance.text = _number(saved.annualBalance);
@@ -86,9 +107,135 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
     if (!mounted) return;
     setState(() {
       _settings = saved;
-      _usage = usage;
+      _importedUsage = usage;
+      _manualUsage = manualUsage;
       _loading = false;
     });
+  }
+
+  Future<void> _saveManualUsage(List<LeaveUsage> entries) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _manualEntriesKey,
+      entries
+          .map((entry) => jsonEncode({
+                'id': entry.id,
+                'date': entry.date.toIso8601String(),
+                'kind': entry.kind.name,
+                'hours': entry.hours,
+              }))
+          .toList(),
+    );
+    if (!mounted) return;
+    setState(() => _manualUsage = entries);
+  }
+
+  Future<void> _addManualUsage() async {
+    final entry = await _showManualUsageDialog();
+    if (entry == null) return;
+    final updated = [..._manualUsage, entry]..sort((a, b) => a.date.compareTo(b.date));
+    await _saveManualUsage(updated);
+  }
+
+  Future<void> _editManualUsage(LeaveUsage existing) async {
+    final entry = await _showManualUsageDialog(existing: existing);
+    if (entry == null) return;
+    final updated = [
+      for (final item in _manualUsage) if (item.id == existing.id) entry else item,
+    ]..sort((a, b) => a.date.compareTo(b.date));
+    await _saveManualUsage(updated);
+  }
+
+  Future<void> _deleteManualUsage(LeaveUsage entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete leave entry?'),
+        content: Text('${_leaveKind(entry.kind)} • ${_date(entry.date)} • ${_hours(entry.hours)}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _saveManualUsage(_manualUsage.where((item) => item.id != entry.id).toList());
+  }
+
+  Future<LeaveUsage?> _showManualUsageDialog({LeaveUsage? existing}) async {
+    var date = existing?.date ?? DateTime.now();
+    var kind = existing?.kind ?? LeaveKind.annual;
+    final hours = TextEditingController(text: existing == null ? '8' : _number(existing.hours));
+    final result = await showDialog<LeaveUsage>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(existing == null ? 'Add Leave Used' : 'Edit Leave Used'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calendar_today_outlined),
+                  title: const Text('Date used'),
+                  subtitle: Text(_date(date)),
+                  onTap: () async {
+                    final selected = await showDatePicker(
+                      context: context,
+                      initialDate: date,
+                      firstDate: DateTime(date.year - 2),
+                      lastDate: DateTime(date.year + 2),
+                    );
+                    if (selected != null) setDialogState(() => date = selected);
+                  },
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<LeaveKind>(
+                  value: kind,
+                  decoration: const InputDecoration(labelText: 'Leave type'),
+                  items: const [
+                    DropdownMenuItem(value: LeaveKind.annual, child: Text('Annual Leave')),
+                    DropdownMenuItem(value: LeaveKind.sick, child: Text('Sick Leave')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => kind = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: hours,
+                  autofocus: existing == null,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Hours used', suffixText: 'hrs'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final value = double.tryParse(hours.text.trim());
+                if (value == null || value <= 0) return;
+                Navigator.pop(
+                  context,
+                  LeaveUsage(
+                    id: existing?.id ?? 'manual-${DateTime.now().microsecondsSinceEpoch}',
+                    date: date,
+                    kind: kind,
+                    hours: value,
+                  ),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    hours.dispose();
+    return result;
   }
 
   double? _value(TextEditingController controller) =>
@@ -141,7 +288,10 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
     final settings = _settings;
     final projection = settings == null
         ? null
-        : _projectionService.calculate(settings: settings, usage: _usage);
+        : _projectionService.calculate(
+            settings: settings,
+            usage: [..._importedUsage, ..._manualUsage],
+          );
     return Scaffold(
       appBar: AppBar(title: const Text('Leave Balance')),
       body: SafeArea(
@@ -161,6 +311,52 @@ class _LeaveBalancePageState extends State<LeaveBalancePage> {
                     const SizedBox(height: 16),
                   ] else
                     const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(child: Text('Manual leave used', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))),
+                      TextButton.icon(
+                        onPressed: _addManualUsage,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Card(
+                    child: _manualUsage.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text('No manual leave usage entered. Add unscheduled leave that does not appear in your imported schedule.'),
+                          )
+                        : Column(
+                            children: [
+                              for (var index = 0; index < _manualUsage.length; index++) ...[
+                                ListTile(
+                                  leading: Icon(_manualUsage[index].kind == LeaveKind.annual ? Icons.beach_access_outlined : Icons.medical_services_outlined),
+                                  title: Text('${_leaveKind(_manualUsage[index].kind)} • ${_hours(_manualUsage[index].hours)}'),
+                                  subtitle: Text(_date(_manualUsage[index].date)),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Edit entry',
+                                        onPressed: () => _editManualUsage(_manualUsage[index]),
+                                        icon: const Icon(Icons.edit_outlined),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Delete entry',
+                                        onPressed: () => _deleteManualUsage(_manualUsage[index]),
+                                        icon: const Icon(Icons.delete_outline),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (index != _manualUsage.length - 1) const Divider(height: 1),
+                              ],
+                            ],
+                          ),
+                  ),
+                  const SizedBox(height: 16),
                   Text('Balance from latest LES', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
                   Card(
@@ -233,11 +429,11 @@ class _ProjectionSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final warnings = <String>[];
-    if (settings.annualBalance < 0) {
-      warnings.add('Your entered annual leave balance is ${_hours(-settings.annualBalance)} below zero.');
+    if (projection.currentAnnual < 0) {
+      warnings.add('Your current annual leave balance is ${_hours(-projection.currentAnnual)} below zero.');
     }
-    if (settings.sickBalance < 0) {
-      warnings.add('Your entered sick leave balance is ${_hours(-settings.sickBalance)} below zero.');
+    if (projection.currentSick < 0) {
+      warnings.add('Your current sick leave balance is ${_hours(-projection.currentSick)} below zero.');
     }
     if (projection.useOrLose > 0) {
       warnings.add('${_hours(projection.useOrLose)} of projected annual leave is above your carryover limit.');
@@ -252,9 +448,9 @@ class _ProjectionSummary extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(child: _BalanceCard(title: 'Annual now', hours: settings.annualBalance, icon: Icons.beach_access_outlined)),
+            Expanded(child: _BalanceCard(title: 'Annual now', hours: projection.currentAnnual, icon: Icons.beach_access_outlined)),
             const SizedBox(width: 10),
-            Expanded(child: _BalanceCard(title: 'Sick now', hours: settings.sickBalance, icon: Icons.medical_services_outlined)),
+            Expanded(child: _BalanceCard(title: 'Sick now', hours: projection.currentSick, icon: Icons.medical_services_outlined)),
           ],
         ),
         const SizedBox(height: 10),
@@ -376,5 +572,6 @@ class _InfoBanner extends StatelessWidget {
 }
 
 String _date(DateTime date) => '${date.month}/${date.day}/${date.year}';
+String _leaveKind(LeaveKind kind) => kind == LeaveKind.annual ? 'Annual Leave' : 'Sick Leave';
 String _number(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toStringAsFixed(1);
 String _hours(double value) => '${_number(value)} hrs';

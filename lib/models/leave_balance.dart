@@ -3,11 +3,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum LeaveKind { annual, sick }
 
 class LeaveUsage {
-  const LeaveUsage({required this.date, required this.kind, this.hours = 8});
+  const LeaveUsage({
+    required this.date,
+    required this.kind,
+    this.hours = 8,
+    this.id,
+  });
 
   final DateTime date;
   final LeaveKind kind;
   final double hours;
+  final String? id;
 }
 
 class LeaveBalanceSettings {
@@ -67,6 +73,8 @@ class LeaveProjection {
     required this.sickAccrued,
     required this.annualPlanned,
     required this.sickPlanned,
+    required this.currentAnnual,
+    required this.currentSick,
     required this.projectedAnnual,
     required this.projectedSick,
     required this.useOrLose,
@@ -78,6 +86,8 @@ class LeaveProjection {
   final double sickAccrued;
   final double annualPlanned;
   final double sickPlanned;
+  final double currentAnnual;
+  final double currentSick;
   final double projectedAnnual;
   final double projectedSick;
   final double useOrLose;
@@ -93,13 +103,14 @@ class LeaveProjectionService {
     required List<LeaveUsage> usage,
   }) {
     final asOf = _dateOnly(settings.effectiveDate);
+    final today = _dateOnly(DateTime.now());
     final leaveYearEnd = _leaveYearEndContaining(asOf);
     final accrualDates = _payPeriodEndDatesAfter(asOf, leaveYearEnd);
     final uniqueUsage = <String, LeaveUsage>{};
     for (final item in usage) {
       final date = _dateOnly(item.date);
       if (!date.isAfter(asOf) || date.isAfter(leaveYearEnd)) continue;
-      final key = '${date.year}-${date.month}-${date.day}-${item.kind.name}';
+      final key = item.id ?? '${date.year}-${date.month}-${date.day}-${item.kind.name}';
       uniqueUsage.putIfAbsent(key, () => item);
     }
 
@@ -108,6 +119,25 @@ class LeaveProjectionService {
         .fold<double>(0, (total, item) => total + item.hours);
     final sickPlanned = uniqueUsage.values
         .where((item) => item.kind == LeaveKind.sick)
+        .fold<double>(0, (total, item) => total + item.hours);
+
+    final accruedThroughToday =
+        accrualDates.where((date) => !date.isAfter(today)).toList();
+    var annualAccruedThroughToday =
+        settings.annualAccrualPerPayPeriod * accruedThroughToday.length;
+    if (settings.annualAccrualPerPayPeriod == 6 &&
+        accruedThroughToday.contains(leaveYearEnd)) {
+      annualAccruedThroughToday += 4;
+    }
+    final sickAccruedThroughToday =
+        settings.sickAccrualPerPayPeriod * accruedThroughToday.length;
+    final annualUsedThroughToday = uniqueUsage.values
+        .where((item) =>
+            item.kind == LeaveKind.annual && !item.date.isAfter(today))
+        .fold<double>(0, (total, item) => total + item.hours);
+    final sickUsedThroughToday = uniqueUsage.values
+        .where((item) =>
+            item.kind == LeaveKind.sick && !item.date.isAfter(today))
         .fold<double>(0, (total, item) => total + item.hours);
 
     var annualAccrued = settings.annualAccrualPerPayPeriod * accrualDates.length;
@@ -125,6 +155,11 @@ class LeaveProjectionService {
       sickAccrued: sickAccrued,
       annualPlanned: annualPlanned,
       sickPlanned: sickPlanned,
+      currentAnnual: settings.annualBalance +
+          annualAccruedThroughToday -
+          annualUsedThroughToday,
+      currentSick:
+          settings.sickBalance + sickAccruedThroughToday - sickUsedThroughToday,
       projectedAnnual: projectedAnnual,
       projectedSick: projectedSick,
       useOrLose: (projectedAnnual - settings.annualCarryoverLimit)

@@ -52,4 +52,23 @@ void main() {
     final projection = service.calculate(settings: settings, usage: const []);
     expect(projection.useOrLose, projection.projectedAnnual - 240);
   });
+
+  test('manual entries with unique ids are counted separately', () {
+    final settings = LeaveBalanceSettings(
+      effectiveDate: DateTime(2026, 9, 12),
+      annualBalance: 100,
+      sickBalance: 100,
+      annualAccrualPerPayPeriod: 0,
+      sickAccrualPerPayPeriod: 0,
+    );
+    final projection = service.calculate(
+      settings: settings,
+      usage: [
+        LeaveUsage(id: 'manual-1', date: DateTime(2026, 10, 1), kind: LeaveKind.annual, hours: 2),
+        LeaveUsage(id: 'manual-2', date: DateTime(2026, 10, 1), kind: LeaveKind.annual, hours: 3),
+      ],
+    );
+    expect(projection.annualPlanned, 5);
+    expect(projection.projectedAnnual, 95);
+  });
 }

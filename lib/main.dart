@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/dated_shift.dart';
+import 'models/leave_balance.dart';
 import 'models/schedule_display_settings.dart';
 import 'screens/calendar_sync_page.dart';
 import 'screens/leave_balance_page.dart';
@@ -47,6 +50,8 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
   List<String> _scheduleChanges = const [];
   DateTime? _lastUpdated;
   ScheduleDisplaySettings _displaySettings = ScheduleDisplaySettings.defaults;
+  LeaveBalanceSettings? _leaveBalanceSettings;
+  LeaveProjection? _leaveProjection;
   bool _loading = true;
   String? _error;
 
@@ -77,11 +82,14 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     shifts.sort((a, b) => a.date.compareTo(b.date));
 
     if (!mounted) return;
+    final leaveSummary = _buildLeaveSummary(prefs, shifts);
     setState(() {
       _shifts = shifts;
       _scheduleChanges = savedChanges;
       _lastUpdated = updated == null ? null : DateTime.tryParse(updated);
       _displaySettings = displaySettings;
+      _leaveBalanceSettings = leaveSummary.$1;
+      _leaveProjection = leaveSummary.$2;
       _loading = false;
     });
   }
@@ -110,6 +118,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
       _lastUpdated = now;
       _error = null;
     });
+    await _refreshLeaveBalance();
 
     if (reviewed.deleteSourceImages && reviewed.sourceImages.isNotEmpty) {
       try {
@@ -148,11 +157,78 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
         builder: (_) => UpcomingLeavePage(displaySettings: _displaySettings),
       ),
     );
+    await _refreshLeaveBalance();
   }
 
   Future<void> _openLeaveBalance() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(builder: (_) => const LeaveBalancePage()),
+    );
+    await _refreshLeaveBalance();
+  }
+
+  Future<void> _refreshLeaveBalance() async {
+    final prefs = await SharedPreferences.getInstance();
+    final summary = _buildLeaveSummary(prefs, _shifts);
+    if (!mounted) return;
+    setState(() {
+      _leaveBalanceSettings = summary.$1;
+      _leaveProjection = summary.$2;
+    });
+  }
+
+  (LeaveBalanceSettings?, LeaveProjection?) _buildLeaveSummary(
+    SharedPreferences prefs,
+    List<DatedShift> shifts,
+  ) {
+    final effective = DateTime.tryParse(prefs.getString('leave_balance_effective_date') ?? '');
+    if (effective == null || !prefs.containsKey('leave_balance_annual_hours')) {
+      return (null, null);
+    }
+    final settings = LeaveBalanceSettings(
+      effectiveDate: effective,
+      annualBalance: prefs.getDouble('leave_balance_annual_hours') ?? 0,
+      sickBalance: prefs.getDouble('leave_balance_sick_hours') ?? 0,
+      annualAccrualPerPayPeriod: prefs.getDouble('leave_balance_annual_accrual') ?? 8,
+      sickAccrualPerPayPeriod: prefs.getDouble('leave_balance_sick_accrual') ?? 4,
+      annualCarryoverLimit: prefs.getDouble('leave_balance_carryover_limit') ?? 240,
+    );
+    final usage = <LeaveUsage>[
+      for (final entry in shifts)
+        if (entry.shift.isAnnualLeave)
+          LeaveUsage(date: entry.date, kind: LeaveKind.annual)
+        else if (entry.shift.isSickLeave)
+          LeaveUsage(date: entry.date, kind: LeaveKind.sick),
+    ];
+    for (final row in prefs.getStringList('screenshot_leave_entries_v1') ?? const <String>[]) {
+      try {
+        final map = jsonDecode(row) as Map<String, dynamic>;
+        final date = DateTime.tryParse(map['date'] as String? ?? '');
+        final status = (map['status'] as String? ?? '').toLowerCase();
+        final type = (map['type'] as String? ?? '').toLowerCase();
+        if (date == null || status != 'approved') continue;
+        if (type.contains('annual')) usage.add(LeaveUsage(date: date, kind: LeaveKind.annual));
+        if (type.contains('sick')) usage.add(LeaveUsage(date: date, kind: LeaveKind.sick));
+      } catch (_) {}
+    }
+    for (final row in prefs.getStringList('manual_leave_usage_v1') ?? const <String>[]) {
+      try {
+        final map = jsonDecode(row) as Map<String, dynamic>;
+        final date = DateTime.tryParse(map['date'] as String? ?? '');
+        final hours = (map['hours'] as num?)?.toDouble();
+        final id = map['id'] as String?;
+        if (date == null || hours == null || hours <= 0 || id == null) continue;
+        usage.add(LeaveUsage(
+          id: id,
+          date: date,
+          hours: hours,
+          kind: map['kind'] == LeaveKind.sick.name ? LeaveKind.sick : LeaveKind.annual,
+        ));
+      } catch (_) {}
+    }
+    return (
+      settings,
+      const LeaveProjectionService().calculate(settings: settings, usage: usage),
     );
   }
 
@@ -225,7 +301,7 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     showAboutDialog(
       context: context,
       applicationName: 'Web Schedule Manager',
-      applicationVersion: '0.12.0 beta',
+      applicationVersion: '0.12.1 beta',
       applicationIcon: const Icon(Icons.calendar_month_outlined, size: 42),
       children: const [
         Text(
@@ -333,6 +409,14 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                     ),
                   ],
                   const SizedBox(height: 12),
+                  if (_leaveBalanceSettings != null && _leaveProjection != null) ...[
+                    _HomeLeaveBalanceCard(
+                      settings: _leaveBalanceSettings!,
+                      projection: _leaveProjection!,
+                      onTap: _openLeaveBalance,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (_shifts.isNotEmpty) ...[
                     Card(
                       child: Padding(
@@ -458,6 +542,89 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
     );
   }
 }
+
+class _HomeLeaveBalanceCard extends StatelessWidget {
+  const _HomeLeaveBalanceCard({
+    required this.settings,
+    required this.projection,
+    required this.onTap,
+  });
+
+  final LeaveBalanceSettings settings;
+  final LeaveProjection projection;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final warning = projection.useOrLose > 0 ||
+        projection.projectedAnnual < 0 ||
+        projection.projectedSick < 0;
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.account_balance_wallet_outlined, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text('Leave Balance', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+                  if (warning) Icon(Icons.warning_amber_rounded, color: Theme.of(context).colorScheme.error),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Row(
+                children: [
+                  Expanded(child: Text('TYPE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+                  Expanded(child: Text('CURRENT', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+                  Expanded(child: Text('PROJECTED', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+                ],
+              ),
+              const SizedBox(height: 7),
+              _HomeLeaveRow(label: 'Annual', current: projection.currentAnnual, projected: projection.projectedAnnual),
+              const SizedBox(height: 7),
+              _HomeLeaveRow(label: 'Sick', current: projection.currentSick, projected: projection.projectedSick),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeLeaveRow extends StatelessWidget {
+  const _HomeLeaveRow({required this.label, required this.current, required this.projected});
+
+  final String label;
+  final double current;
+  final double projected;
+
+  String _format(double value) =>
+      value == value.roundToDouble() ? '${value.toInt()} hrs' : '${value.toStringAsFixed(1)} hrs';
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Expanded(child: Text(_format(current), textAlign: TextAlign.right)),
+          Expanded(
+            child: Text(
+              _format(projected),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: projected < 0 ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ],
+      );
 
 class _HomeActions extends StatelessWidget {
   const _HomeActions({
