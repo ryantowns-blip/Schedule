@@ -373,6 +373,7 @@ class _InfoBanner extends StatelessWidget {
           ],
         ),
       );
+}
 
 String _date(DateTime date) => '${date.month}/${date.day}/${date.year}';
 String _number(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toStringAsFixed(1);
