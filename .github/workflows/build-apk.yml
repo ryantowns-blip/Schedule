@@ -52,12 +52,10 @@ jobs:
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' "$BUILD_FILE"
           fi
           PROGUARD_FILE=android/app/proguard-rules.pro
-          printf '%s\\n' \\
-            '-dontwarn com.google.mlkit.vision.text.chinese.**' \\
-            '-dontwarn com.google.mlkit.vision.text.devanagari.**' \\
-            '-dontwarn com.google.mlkit.vision.text.japanese.**' \\
-            '-dontwarn com.google.mlkit.vision.text.korean.**' \\
-            > "$PROGUARD_FILE"
+          printf '%s\\n' '-dontwarn com.google.mlkit.vision.text.chinese.**' > "$PROGUARD_FILE"
+          printf '%s\\n' '-dontwarn com.google.mlkit.vision.text.devanagari.**' >> "$PROGUARD_FILE"
+          printf '%s\\n' '-dontwarn com.google.mlkit.vision.text.japanese.**' >> "$PROGUARD_FILE"
+          printf '%s\\n' '-dontwarn com.google.mlkit.vision.text.korean.**' >> "$PROGUARD_FILE"
           if ! grep -q 'proguard-rules.pro' "$BUILD_FILE"; then
             sed -i '/release {/a\\            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' "$BUILD_FILE"
           fi
