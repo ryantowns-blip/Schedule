@@ -409,14 +409,6 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                     ),
                   ],
                   const SizedBox(height: 12),
-                  if (_leaveBalanceSettings != null && _leaveProjection != null) ...[
-                    _HomeLeaveBalanceCard(
-                      settings: _leaveBalanceSettings!,
-                      projection: _leaveProjection!,
-                      onTap: _openLeaveBalance,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
                   if (_shifts.isNotEmpty) ...[
                     Card(
                       child: Padding(
@@ -427,6 +419,14 @@ class _ScheduleHomePageState extends State<ScheduleHomePage> {
                         ),
                       ),
                     ),
+                    if (_leaveBalanceSettings != null && _leaveProjection != null) ...[
+                      const SizedBox(height: 12),
+                      _HomeLeaveBalanceCard(
+                        settings: _leaveBalanceSettings!,
+                        projection: _leaveProjection!,
+                        onTap: _openLeaveBalance,
+                      ),
+                    ],
                     if (_lastUpdated != null) ...[
                       const SizedBox(height: 10),
                       Text(
@@ -578,18 +578,22 @@ class _HomeLeaveBalanceCard extends StatelessWidget {
                   const Icon(Icons.chevron_right),
                 ],
               ),
-              const SizedBox(height: 12),
-              const Row(
-                children: [
-                  Expanded(child: Text('TYPE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-                  Expanded(child: Text('CURRENT', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-                  Expanded(child: Text('PROJECTED', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-                ],
+              const SizedBox(height: 4),
+              Text(
+                'Current and projected year-end hours',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 7),
-              _HomeLeaveRow(label: 'Annual', current: projection.currentAnnual, projected: projection.projectedAnnual),
-              const SizedBox(height: 7),
-              _HomeLeaveRow(label: 'Sick', current: projection.currentSick, projected: projection.projectedSick),
+              const SizedBox(height: 16),
+              _AnnualLeaveXpBar(
+                current: projection.currentAnnual,
+                projected: projection.projectedAnnual,
+                carryoverLimit: settings.annualCarryoverLimit,
+              ),
+              const SizedBox(height: 18),
+              _CompactSickLeaveRow(
+                current: projection.currentSick,
+                projected: projection.projectedSick,
+              ),
             ],
           ),
         ),
@@ -598,29 +602,195 @@ class _HomeLeaveBalanceCard extends StatelessWidget {
   }
 }
 
-class _HomeLeaveRow extends StatelessWidget {
-  const _HomeLeaveRow({required this.label, required this.current, required this.projected});
+class _AnnualLeaveXpBar extends StatelessWidget {
+  const _AnnualLeaveXpBar({
+    required this.current,
+    required this.projected,
+    required this.carryoverLimit,
+  });
 
+  final double current;
+  final double projected;
+  final double carryoverLimit;
+
+  String _format(double value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(1);
+
+  @override
+  Widget build(BuildContext context) {
+    final safeCurrent = current.clamp(0, double.infinity).toDouble();
+    final safeProjected = projected.clamp(0, double.infinity).toDouble();
+    final scaleMaximum = [carryoverLimit, safeCurrent, safeProjected]
+        .reduce((a, b) => a > b ? a : b);
+    final currentWithinLimit = safeCurrent.clamp(0, carryoverLimit).toDouble();
+    final projectedGainWithinLimit =
+        (safeProjected.clamp(0, carryoverLimit) - currentWithinLimit)
+            .clamp(0, double.infinity)
+            .toDouble();
+    final projectedOverLimit =
+        (safeProjected - carryoverLimit).clamp(0, double.infinity).toDouble();
+    final limitPosition = scaleMaximum == 0 ? 1.0 : carryoverLimit / scaleMaximum;
+
+    const currentColor = Color(0xFF176B37);
+    const projectedColor = Color(0xFF8FD3A1);
+    final errorColor = Theme.of(context).colorScheme.error;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Annual leave', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            Text(
+              '${_format(current)} current  →  ${_format(projected)} projected',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              double widthFor(double hours) =>
+                  scaleMaximum == 0 ? 0 : constraints.maxWidth * hours / scaleMaximum;
+              return SizedBox(
+                height: 18,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                    ),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: widthFor(currentWithinLimit),
+                      child: const ColoredBox(color: currentColor),
+                    ),
+                    Positioned(
+                      left: widthFor(currentWithinLimit),
+                      top: 0,
+                      bottom: 0,
+                      width: widthFor(projectedGainWithinLimit),
+                      child: const ColoredBox(color: projectedColor),
+                    ),
+                    if (projectedOverLimit > 0)
+                      Positioned(
+                        left: widthFor(carryoverLimit),
+                        top: 0,
+                        bottom: 0,
+                        width: widthFor(projectedOverLimit),
+                        child: ColoredBox(color: errorColor),
+                      ),
+                    if (limitPosition < 1)
+                      Positioned(
+                        left: widthFor(carryoverLimit) - 1,
+                        top: 0,
+                        bottom: 0,
+                        width: 2,
+                        child: ColoredBox(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            const Text('0'),
+            const Spacer(),
+            Text(_format(carryoverLimit)),
+            if (scaleMaximum > carryoverLimit) ...[
+              const Spacer(),
+              Text(_format(scaleMaximum)),
+            ],
+          ],
+        ),
+        if (projectedOverLimit > 0) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 17, color: errorColor),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  '${_format(projectedOverLimit)} hours projected over the carryover limit',
+                  style: TextStyle(color: errorColor, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 7),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            const _LeaveBarKey(color: currentColor, label: 'Current'),
+            const SizedBox(width: 12),
+            const _LeaveBarKey(color: projectedColor, label: 'Projected'),
+            const SizedBox(width: 12),
+            _LeaveBarKey(color: errorColor, label: 'Over 240'),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _LeaveBarKey extends StatelessWidget {
+  const _LeaveBarKey({required this.color, required this.label});
+
+  final Color color;
   final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 4),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      );
+}
+
+class _CompactSickLeaveRow extends StatelessWidget {
+  const _CompactSickLeaveRow({required this.current, required this.projected});
+
   final double current;
   final double projected;
 
-  String _format(double value) =>
-      value == value.roundToDouble() ? '${value.toInt()} hrs' : '${value.toStringAsFixed(1)} hrs';
+  String _format(double value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) => Row(
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
-          Expanded(child: Text(_format(current), textAlign: TextAlign.right)),
-          Expanded(
-            child: Text(
-              _format(projected),
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: projected < 0 ? Theme.of(context).colorScheme.error : Theme.of(context).colorScheme.primary,
-              ),
+          const Expanded(
+            child: Text('Sick leave', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          Text('Current  ${_format(current)}h'),
+          const SizedBox(width: 14),
+          Text(
+            'Projected  ${_format(projected)}h',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: projected < 0
+                  ? Theme.of(context).colorScheme.error
+                  : Theme.of(context).colorScheme.primary,
             ),
           ),
         ],
