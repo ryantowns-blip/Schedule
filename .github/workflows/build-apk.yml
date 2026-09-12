@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK # v0.10.14 rebuild
 
 on:
   workflow_dispatch:
@@ -8,6 +8,10 @@ on:
     branches:
       - main
       - 'v*'
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
