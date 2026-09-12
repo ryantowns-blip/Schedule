@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/dated_shift.dart';
@@ -371,6 +372,44 @@ class _ScreenshotImportPageState extends State<ScreenshotImportPage> {
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
               ],
+              const SizedBox(height: 8),
+              Card(
+                child: ExpansionTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: const Text('Import diagnostics (temporary)'),
+                  subtitle: const Text('Open and copy this when schedule recognition is incomplete.'),
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.tonalIcon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: _result!.diagnostics));
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Import diagnostics copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_outlined),
+                        label: const Text('Copy diagnostics'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 320),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          _result!.diagnostics,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               if (!_usingPdf) ...[
                 const SizedBox(height: 8),
                 Card(

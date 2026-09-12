@@ -46,11 +46,14 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
     final raw = prefs.getStringList(_entriesKey) ?? const <String>[];
     final updated = prefs.getString(_updatedKey);
     final entries = <UpcomingLeaveEntry>[];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     for (final item in raw) {
       try {
         final map = jsonDecode(item) as Map<String, dynamic>;
         final date = DateTime.tryParse(map['date'] as String? ?? '');
         if (date == null) continue;
+        if (DateTime(date.year, date.month, date.day).isBefore(today)) continue;
         entries.add(UpcomingLeaveEntry(
           date: date,
           type: map['type'] as String? ?? 'Annual',
@@ -242,7 +245,8 @@ class _UpcomingLeavePageState extends State<UpcomingLeavePage> {
       _message = null;
     });
     try {
-      final result = await _importer.importFiles(images.map((e) => e.path).toList());
+      final scanned = await _importer.importFiles(images.map((e) => e.path).toList());
+      final result = _importer.filterUpcoming(scanned);
       if (!mounted) return;
 
       final decision = await _reviewLeaveImport(result);

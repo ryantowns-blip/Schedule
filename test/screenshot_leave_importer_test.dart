@@ -88,4 +88,29 @@ lo9/07/2026| Sick |Approved
     final result = importer.parseRecognizedText('02/31/2026 Annual Approved');
     expect(result.$1, isEmpty);
   });
+
+  test('upcoming filter keeps today and future dates only', () {
+    final parsed = importer.parseRecognizedText('''
+9/9/2026 Annual Approved
+9/10/2026 Sick Approved
+9/11/2026 Holiday Pending
+9/12/2026 Annual
+Approved
+9/8/2026 Annual
+''');
+    final filtered = importer.filterUpcoming(
+      ScreenshotLeaveImportResult(
+        entries: parsed.$1,
+        unrecognizedLines: parsed.$2,
+        rawText: '',
+      ),
+      now: DateTime(2026, 9, 10, 18, 30),
+    );
+    expect(filtered.entries.map((entry) => entry.date), [
+      DateTime(2026, 9, 10),
+      DateTime(2026, 9, 11),
+      DateTime(2026, 9, 12),
+    ]);
+    expect(filtered.unrecognizedLines, isEmpty);
+  });
 }

@@ -19,6 +19,29 @@ class _PendingLeaveRow {
 class ScreenshotLeaveImporter {
   const ScreenshotLeaveImporter();
 
+  ScreenshotLeaveImportResult filterUpcoming(
+    ScreenshotLeaveImportResult result, {
+    DateTime? now,
+  }) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final entries = result.entries.where((entry) {
+      final date = DateTime(entry.date.year, entry.date.month, entry.date.day);
+      return !date.isBefore(today);
+    }).toList();
+    final unresolved = result.unrecognizedLines.where((line) {
+      if (line.toLowerCase().contains("today's date")) return false;
+      final date = _findDate(line);
+      if (date == null) return false;
+      return !DateTime(date.year, date.month, date.day).isBefore(today);
+    }).toList();
+    return ScreenshotLeaveImportResult(
+      entries: entries,
+      unrecognizedLines: unresolved,
+      rawText: result.rawText,
+    );
+  }
+
   Future<ScreenshotLeaveImportResult> importFiles(List<String> paths) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {

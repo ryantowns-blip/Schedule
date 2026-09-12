@@ -5,10 +5,16 @@ import '../models/parsed_shift.dart';
 import 'schedule_parser.dart';
 
 class ScreenshotImportResult {
-  const ScreenshotImportResult({required this.shifts, required this.unrecognizedLines, required this.rawText});
+  const ScreenshotImportResult({
+    required this.shifts,
+    required this.unrecognizedLines,
+    required this.rawText,
+    required this.diagnostics,
+  });
   final List<DatedShift> shifts;
   final List<String> unrecognizedLines;
   final String rawText;
+  final String diagnostics;
 }
 
 class _OcrItem {
@@ -37,10 +43,20 @@ class ScreenshotScheduleImporter {
       final allShifts = <DatedShift>[];
       final unrecognized = <String>[];
       final raw = StringBuffer();
-      for (final path in paths) {
+      final diagnostics = StringBuffer('ATC Schedule Manager OCR diagnostics\n');
+      for (var imageIndex = 0; imageIndex < paths.length; imageIndex++) {
+        final path = paths[imageIndex];
         final recognized = await recognizer.processImage(InputImage.fromFilePath(path));
         raw.writeln(recognized.text);
         final spatial = _parseSpatialTable(recognized);
+        diagnostics
+          ..writeln('\n=== IMAGE ${imageIndex + 1} ===')
+          ..writeln('OCR blocks: ${recognized.blocks.length}')
+          ..writeln('Spatial matches: ${spatial.length}')
+          ..writeln('Parser mode: ${spatial.isNotEmpty ? 'spatial grid' : 'plain-text fallback'}')
+          ..writeln(_diagnosticItems(recognized))
+          ..writeln('--- RAW OCR ---')
+          ..writeln(recognized.text);
 
         // Once a WMT grid is found, its geometry is authoritative. ML Kit can
         // emit table text in a misleading reading order, so plain-text pairing
@@ -63,10 +79,34 @@ class ScreenshotScheduleImporter {
         shifts: shifts,
         unrecognizedLines: unrecognized.toSet().toList(),
         rawText: raw.toString().trim(),
+        diagnostics: diagnostics.toString().trim(),
       );
     } finally {
       await recognizer.close();
     }
+  }
+
+  String _diagnosticItems(RecognizedText recognized) {
+    final output = StringBuffer('--- OCR LINES (left,top,right,bottom) ---');
+    for (final block in recognized.blocks) {
+      for (final line in block.lines) {
+        final box = line.boundingBox;
+        final date = _findDate(line.text);
+        final shift = _findShift(line.text);
+        final classification = date != null
+            ? 'DATE ${_dateKey(date)}'
+            : shift != null
+                ? 'SHIFT ${shift.raw}'
+                : _looksScheduleLike(line.text)
+                    ? 'REJECTED-SCHEDULE-LIKE'
+                    : 'OTHER';
+        output.writeln(
+          '${box.left.round()},${box.top.round()},${box.right.round()},${box.bottom.round()} '
+          '[$classification] ${line.text.trim()}',
+        );
+      }
+    }
+    return output.toString();
   }
 
   List<DatedShift> _parseSpatialTable(RecognizedText recognized) {

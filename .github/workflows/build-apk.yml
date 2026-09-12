@@ -65,5 +65,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: atc-schedule-manager-lite-v0.10.8-debug-apk
+          name: atc-schedule-manager-lite-v0.10.9-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
