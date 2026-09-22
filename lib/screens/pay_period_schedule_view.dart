@@ -33,6 +33,49 @@ List<PayPeriodSchedule> buildPayPeriods(List<DatedShift> shifts) {
   return periods;
 }
 
+List<PayPeriodSchedule> includeCurrentPayPeriod(
+  List<PayPeriodSchedule> periods,
+  DateTime today,
+) {
+  if (periods.isEmpty) return periods;
+  final day = DateTime(today.year, today.month, today.day);
+  final existing = periods.any(
+    (period) => !day.isBefore(period.start) && !day.isAfter(period.end),
+  );
+  if (existing) return periods;
+
+  var start = periods.first.start;
+  while (day.isAfter(start.add(const Duration(days: 13)))) {
+    start = start.add(const Duration(days: 14));
+  }
+  while (day.isBefore(start)) {
+    start = start.subtract(const Duration(days: 14));
+  }
+
+  return [
+    ...periods,
+    PayPeriodSchedule(
+      start: start,
+      end: start.add(const Duration(days: 13)),
+      shifts: const [],
+    ),
+  ]..sort((a, b) => a.start.compareTo(b.start));
+}
+
+int defaultPayPeriodIndex(
+  List<PayPeriodSchedule> periods,
+  DateTime today,
+) {
+  if (periods.isEmpty) return 0;
+  final day = DateTime(today.year, today.month, today.day);
+  final index = periods.indexWhere(
+    (period) => !day.isBefore(period.start) && !day.isAfter(period.end),
+  );
+  if (index >= 0) return index;
+  if (day.isBefore(periods.first.start)) return 0;
+  return periods.length - 1;
+}
+
 class PayPeriodScheduleView extends StatelessWidget {
   const PayPeriodScheduleView({
     super.key,
@@ -45,7 +88,7 @@ class PayPeriodScheduleView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final periods = buildPayPeriods(shifts);
+    final periods = includeCurrentPayPeriod(buildPayPeriods(shifts), DateTime.now());
     final combinedOvertimeMinutes = shifts.fold<int>(
       0,
       (total, entry) => total + entry.shift.scheduledOvertimeMinutes,
@@ -54,6 +97,7 @@ class PayPeriodScheduleView extends StatelessWidget {
 
     return DefaultTabController(
       length: periods.length,
+      initialIndex: defaultPayPeriodIndex(periods, DateTime.now()),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -119,6 +163,27 @@ class _PeriodBodyState extends State<_PeriodBody> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.period.shifts.isEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 19),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'No schedule data is saved for this pay period. Use Update Schedule to add it.',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
